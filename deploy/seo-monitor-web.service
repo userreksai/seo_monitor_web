@@ -1,0 +1,28 @@
+[Unit]
+Description=SEO Monitor Vue Web
+After=network-online.target seo-monitor.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=seo-monitor-web
+Group=seo-monitor-web
+WorkingDirectory=/usr/local/seo_monitor_web
+Environment=NODE_ENV=production
+EnvironmentFile=/usr/local/seo_monitor_web/.env
+ExecStart=/usr/bin/node /usr/local/seo_monitor_web/server.mjs
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target
