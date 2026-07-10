@@ -23,19 +23,24 @@ NODE_MAJOR=0
 if command -v node >/dev/null 2>&1; then
   NODE_MAJOR=$(node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || printf '0')
 fi
-if [ "$NODE_MAJOR" -lt 20 ] || ! command -v npm >/dev/null 2>&1; then
-  log "Installing Node.js 20"
+if [ "$NODE_MAJOR" -lt 22 ] || ! command -v npm >/dev/null 2>&1; then
+  log "Installing Node.js 22"
   NODE_SETUP=$(mktemp /tmp/nodesource-setup.XXXXXX.sh)
   trap 'rm -f "$NODE_SETUP"' EXIT INT TERM
-  curl -fsSL https://deb.nodesource.com/setup_20.x -o "$NODE_SETUP"
+  curl -fsSL https://deb.nodesource.com/setup_22.x -o "$NODE_SETUP"
   sh "$NODE_SETUP"
   apt-get install -y nodejs
   rm -f "$NODE_SETUP"
   trap - EXIT INT TERM
 fi
-if ! command -v pnpm >/dev/null 2>&1; then
-  log "Installing pnpm 11"
-  npm install --global pnpm@11.7.0
+PNPM_REQUIRED=11.7.0
+PNPM_CURRENT=
+if command -v pnpm >/dev/null 2>&1; then
+  PNPM_CURRENT=$(pnpm --version 2>/dev/null || true)
+fi
+if [ "$PNPM_CURRENT" != "$PNPM_REQUIRED" ]; then
+  log "Installing pnpm $PNPM_REQUIRED (current: ${PNPM_CURRENT:-unavailable})"
+  npm install --global --force "pnpm@$PNPM_REQUIRED"
 fi
 
 log "Pulling source code into $APP_DIR"
