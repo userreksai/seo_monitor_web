@@ -24,7 +24,7 @@ sudo sh /tmp/install-seo-monitor-web.sh
 
 脚本会自动：
 
-1. 安装 Git、Node.js 20、pnpm 等依赖。
+1. 安装 Git、Node.js 22、pnpm 11 等依赖；检测到 Node.js 20 时自动升级。
 2. 拉取或快进更新 `/usr/local/seo_monitor_web`。
 3. 从 `/usr/local/seo_monitor/.env` 读取 `API_TOKEN`。
 4. 生成前端管理用户名和随机密码。
@@ -61,7 +61,7 @@ WEB_PASSWORD=强密码
 
 ## 本地开发
 
-Node.js 20+：
+Node.js 22+：
 
 ```sh
 pnpm install
