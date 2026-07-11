@@ -45,7 +45,6 @@ export function collectAll() {
   return request<{ queued: number; snapshot_date: string }>('/api/v1/collect', { method: 'POST' })
 }
 
-export function getMetrics(id: string, from: string, to: string) {
-  const params = new URLSearchParams({ from, to })
-  return request<MetricsResponse>(`/api/v1/domains/${id}/metrics?${params}`)
+export function getMetrics(id: string) {
+  return request<MetricsResponse>(`/api/v1/domains/${id}/metrics`)
 }
