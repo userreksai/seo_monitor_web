@@ -10,7 +10,7 @@
 - 添加/归档域名，手动采集单域名或全部域名。
 - 查看最近 90 天流量、权重、反向链接趋势。
 - 服务端代理后端 API，后端 Token 不会发送到浏览器。
-- 8889 端口使用 HTTP Basic 登录保护，安装脚本自动生成密码。
+- HTTP Basic 登录可通过 `WEB_AUTH_ENABLED` 开关控制，目前默认关闭。
 
 ## 服务器一键部署（Debian/Ubuntu）
 
@@ -27,12 +27,12 @@ sudo sh /tmp/install-seo-monitor-web.sh
 1. 安装 Git、Node.js 22、pnpm 11 等依赖；检测到 Node.js 20 时自动升级。
 2. 拉取或快进更新 `/usr/local/seo_monitor_web`。
 3. 从 `/usr/local/seo_monitor/.env` 读取 `API_TOKEN`。
-4. 生成前端管理用户名和随机密码。
+4. 生成备用管理用户名和随机密码，登录功能默认关闭。
 5. 安装依赖、构建 Vue 静态文件。
 6. 安装并启动 `seo-monitor-web.service`。
 7. 检查 `http://127.0.0.1:8889/frontend-health`。
 
-部署完成后脚本会输出访问地址、用户名和密码。服务器安全组/防火墙需要放行 TCP `8889`。
+部署完成后脚本会输出访问地址。服务器安全组/防火墙需要放行 TCP `8889`；登录关闭时建议仅允许可信IP访问。
 
 ## 常用命令
 
@@ -55,9 +55,12 @@ HOST=0.0.0.0
 PORT=8889
 BACKEND_API_URL=http://127.0.0.1:10001
 BACKEND_API_TOKEN=与后端API_TOKEN一致
+WEB_AUTH_ENABLED=false
 WEB_USERNAME=admin
 WEB_PASSWORD=强密码
 ```
+
+需要恢复登录时，将 `WEB_AUTH_ENABLED=true`，然后重启 `seo-monitor-web`。
 
 ## 本地开发
 

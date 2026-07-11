@@ -11,6 +11,7 @@ const host = process.env.HOST || '0.0.0.0'
 const port = parsePort(process.env.PORT || '8889')
 const backend = new URL(process.env.BACKEND_API_URL || 'http://127.0.0.1:10001')
 const backendToken = process.env.BACKEND_API_TOKEN || ''
+const webAuthEnabled = /^(1|true|yes|on)$/i.test(process.env.WEB_AUTH_ENABLED || '')
 const webUsername = process.env.WEB_USERNAME || ''
 const webPassword = process.env.WEB_PASSWORD || ''
 const dist = resolve(root, 'dist')
@@ -23,7 +24,7 @@ if (!backendToken) {
   console.error('BACKEND_API_TOKEN 未配置，拒绝启动不完整的 API 代理')
   process.exit(1)
 }
-if (!webUsername || !webPassword) {
+if (webAuthEnabled && (!webUsername || !webPassword)) {
   console.error('WEB_USERNAME/WEB_PASSWORD 未配置，拒绝将管理页面无保护地暴露到网络')
   process.exit(1)
 }
@@ -56,7 +57,7 @@ const server = createServer((request, response) => {
   if (url.pathname === '/frontend-health') {
     return sendJSON(response, 200, { status: 'ok', port, backend: backend.origin })
   }
-  if (!authorized(request.headers.authorization)) {
+  if (webAuthEnabled && !authorized(request.headers.authorization)) {
     response.setHeader('WWW-Authenticate', 'Basic realm="SEO Monitor", charset="UTF-8"')
     return sendJSON(response, 401, { error: '需要登录' })
   }
@@ -73,6 +74,7 @@ server.on('clientError', (_error, socket) => socket.end('HTTP/1.1 400 Bad Reques
 server.listen(port, host, () => {
   console.log(`SEO Monitor Web listening on http://${host}:${port}`)
   console.log(`API proxy target: ${backend.origin}`)
+  console.log(`Web authentication: ${webAuthEnabled ? 'enabled' : 'disabled'}`)
 })
 
 function authorized(header = '') {
