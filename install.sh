@@ -91,6 +91,7 @@ if [ ! -f "$APP_DIR/.env" ]; then
     printf 'PORT=8889\n'
     printf 'BACKEND_API_URL=http://127.0.0.1:10001\n'
     printf 'BACKEND_API_TOKEN=%s\n' "$BACKEND_TOKEN"
+    printf 'WEB_AUTH_ENABLED=false\n'
     printf 'WEB_USERNAME=admin\n'
     printf 'WEB_PASSWORD=%s\n' "$WEB_PASSWORD"
   } > "$APP_DIR/.env"
@@ -132,12 +133,7 @@ fi
 SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 printf '\nInstallation complete.\n'
 printf 'URL: http://%s:8889\n' "${SERVER_IP:-SERVER_IP}"
-if [ "$GENERATED_LOGIN" -eq 1 ]; then
-  printf 'Username: admin\n'
-  printf 'Password: %s\n' "$WEB_PASSWORD"
-  printf 'Save this password now; it is stored in %s/.env.\n' "$APP_DIR"
-else
-  printf 'Existing login settings were preserved from %s/.env.\n' "$APP_DIR"
-fi
+printf 'Authentication: disabled (WEB_AUTH_ENABLED defaults to false).\n'
+printf 'Set WEB_AUTH_ENABLED=true in %s/.env and restart to enable login.\n' "$APP_DIR"
 printf 'Service: systemctl status %s\n' "$SERVICE"
 printf 'Logs: journalctl -u %s -f\n' "$SERVICE"
