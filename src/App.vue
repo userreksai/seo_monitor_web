@@ -201,10 +201,7 @@ async function openTrend(item: LatestMetric) {
   trend.domain = item.domain.domain
   trend.items = []
   try {
-    const to = new Date()
-    const from = new Date()
-    from.setDate(from.getDate() - 89)
-    const result = await getMetrics(item.domain.id, localDate(from), localDate(to))
+    const result = await getMetrics(item.domain.id)
     trend.items = result.items || []
   } catch (error) {
     showNotice(messageOf(error), true)
@@ -225,9 +222,9 @@ function localDate(date: Date) {
 
 function dateText(value?: string) {
   if (!value) return '—'
-  return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(
-    new Date(value),
-  )
+  const date = value.slice(0, 10)
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
+  return match ? `${match[1]}/${match[2]}/${match[3]}` : value
 }
 
 function numberText(value?: number) {
