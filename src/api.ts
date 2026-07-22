@@ -49,8 +49,8 @@ export function getMetrics(id: string) {
   return request<MetricsResponse>(`/api/v1/domains/${id}/metrics`)
 }
 
-export function listCertificates(query: string, page: number, limit: number) {
-  const params = new URLSearchParams({ q: query, page: String(page), limit: String(limit) })
+export function listCertificates(query: string, status: string, page: number, limit: number) {
+  const params = new URLSearchParams({ q: query, status, page: String(page), limit: String(limit) })
   return request<CertificateSearchResponse>(`/api/v1/certificates?${params}`)
 }
 

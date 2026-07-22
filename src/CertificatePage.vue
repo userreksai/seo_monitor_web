@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { listCertificates, refreshCertificates } from './api'
-import type { LatestCertificate } from './types'
+import type { CertificateSummary, LatestCertificate } from './types'
+
+type CertificateStatusFilter = '' | 'checked' | 'expiring' | 'expired'
 
 const items = ref<LatestCertificate[]>([])
 const loading = ref(false)
@@ -11,20 +13,17 @@ const page = ref(1)
 const limit = ref(20)
 const query = ref('')
 const appliedQuery = ref('')
+const statusFilter = ref<CertificateStatusFilter>('')
+const summary = reactive<CertificateSummary>({ total: 0, checked: 0, expiring_soon: 0, expired: 0 })
 const notice = reactive({ text: '', error: false })
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit.value)))
-const checkedCount = computed(() => items.value.filter((item) => item.certificate).length)
-const expiringCount = computed(
-  () =>
-    items.value.filter((item) => {
-      const days = daysRemaining(item.certificate?.expires_at)
-      return days !== undefined && days >= 0 && days <= 30
-    }).length,
-)
-const expiredCount = computed(
-  () => items.value.filter((item) => (daysRemaining(item.certificate?.expires_at) ?? 0) < 0).length,
-)
+const statusFilterLabel = computed(() => {
+  if (statusFilter.value === 'checked') return '全部已检测'
+  if (statusFilter.value === 'expiring') return '30 天内到期'
+  if (statusFilter.value === 'expired') return '已过期'
+  return ''
+})
 
 let noticeTimer = 0
 function showNotice(text: string, error = false) {
@@ -37,9 +36,10 @@ function showNotice(text: string, error = false) {
 async function load() {
   loading.value = true
   try {
-    const result = await listCertificates(appliedQuery.value, page.value, limit.value)
+    const result = await listCertificates(appliedQuery.value, statusFilter.value, page.value, limit.value)
     items.value = result.items || []
     total.value = result.total
+    Object.assign(summary, result.summary || { total: 0, checked: 0, expiring_soon: 0, expired: 0 })
     if (page.value > totalPages.value) {
       page.value = totalPages.value
       await load()
@@ -60,6 +60,19 @@ function search() {
 function resetSearch() {
   query.value = ''
   appliedQuery.value = ''
+  statusFilter.value = ''
+  page.value = 1
+  void load()
+}
+
+function toggleStatus(status: Exclude<CertificateStatusFilter, ''>) {
+  statusFilter.value = statusFilter.value === status ? '' : status
+  page.value = 1
+  void load()
+}
+
+function clearStatus() {
+  statusFilter.value = ''
   page.value = 1
   void load()
 }
@@ -86,7 +99,8 @@ function daysRemaining(value?: string) {
   if (!value) return undefined
   const expires = new Date(value).getTime()
   if (Number.isNaN(expires)) return undefined
-  return Math.ceil((expires - Date.now()) / 86_400_000)
+  const difference = expires - Date.now()
+  return difference < 0 ? Math.floor(difference / 86_400_000) : Math.ceil(difference / 86_400_000)
 }
 
 function statusOf(item: LatestCertificate) {
@@ -132,17 +146,17 @@ onMounted(load)
   <main class="certificate-main">
     <section class="summary-grid" aria-label="证书概览">
       <article class="summary-card">
-        <span>监控域名</span><strong>{{ total }}</strong><small>当前搜索结果</small>
+        <span>监控域名</span><strong>{{ summary.total }}</strong><small>当前搜索结果</small>
       </article>
       <article class="summary-card">
-        <span>当前页已检测</span><strong>{{ checkedCount }}</strong><small>共 {{ items.length }} 条</small>
+        <span>全部已检测</span><strong>{{ summary.checked }}</strong><small>全部检测数据</small>
       </article>
-      <article class="summary-card warning-card">
-        <span>30 天内到期</span><strong>{{ expiringCount }}</strong><small>当前页证书</small>
-      </article>
-      <article class="summary-card danger-card">
-        <span>已过期</span><strong>{{ expiredCount }}</strong><small>当前页证书</small>
-      </article>
+      <button class="summary-card summary-filter-card warning-card" :class="{ active: statusFilter === 'expiring' }" type="button" :aria-pressed="statusFilter === 'expiring'" @click="toggleStatus('expiring')">
+        <span>30 天内到期</span><strong>{{ summary.expiring_soon }}</strong><small>{{ statusFilter === 'expiring' ? '再次点击取消筛选' : '点击查看全部' }}</small>
+      </button>
+      <button class="summary-card summary-filter-card danger-card" :class="{ active: statusFilter === 'expired' }" type="button" :aria-pressed="statusFilter === 'expired'" @click="toggleStatus('expired')">
+        <span>已过期</span><strong>{{ summary.expired }}</strong><small>{{ statusFilter === 'expired' ? '再次点击取消筛选' : '点击查看全部' }}</small>
+      </button>
     </section>
 
     <section class="panel certificate-toolbar">
@@ -167,6 +181,10 @@ onMounted(load)
         <button class="button primary" type="submit">搜索</button>
         <button class="button ghost" type="button" @click="resetSearch">重置</button>
       </form>
+      <p v-if="statusFilter" class="certificate-filter-tip">
+        当前显示：{{ statusFilterLabel }}，共 {{ total }} 条
+        <button type="button" @click="clearStatus">清除筛选</button>
+      </p>
     </section>
 
     <section class="panel table-panel">
@@ -219,6 +237,8 @@ onMounted(load)
 .certificate-toolbar p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
 .toolbar-actions { display: flex; gap: 9px; }
 .certificate-search { display: grid; grid-template-columns: minmax(260px, 1fr) auto auto; align-items: end; gap: 12px; }
+.certificate-filter-tip { margin: 12px 0 0; color: var(--primary); font-size: 12px; }
+.certificate-filter-tip button { padding: 0; color: inherit; background: transparent; border: 0; text-decoration: underline; }
 .certificate-table { min-width: 1080px; }
 .certificate-table th:first-child { width: 260px; }
 .certificate-table th:nth-child(2) { width: 190px; }
@@ -236,6 +256,9 @@ onMounted(load)
 .danger-card { border-color: #f2c0bd; }
 .warning-card strong { color: #a15c06; }
 .danger-card strong { color: #b42318; }
+.summary-filter-card { width: 100%; text-align: left; }
+.summary-filter-card:hover { transform: translateY(-1px); box-shadow: 0 10px 30px rgba(28, 39, 60, .1); }
+.summary-filter-card.active { box-shadow: 0 0 0 2px var(--primary), var(--shadow); }
 @media (max-width: 980px) {
   .certificate-main { width: calc(100% - 30px); margin-top: 16px; }
 }

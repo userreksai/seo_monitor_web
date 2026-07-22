@@ -66,6 +66,15 @@ export interface CertificateSearchResponse {
   page: number
   limit: number
   q: string
+  status: string
+  summary: CertificateSummary
+}
+
+export interface CertificateSummary {
+  total: number
+  checked: number
+  expiring_soon: number
+  expired: number
 }
 
 export interface SearchResponse {
