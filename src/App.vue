@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import {
   archiveDomain,
   collectAll,
@@ -9,6 +9,11 @@ import {
   searchLatest,
 } from './api'
 import type { LatestMetric, Metric } from './types'
+import CertificatePage from './CertificatePage.vue'
+
+const currentView = ref<'dashboard' | 'certificates'>(
+  window.location.pathname === '/certificates' ? 'certificates' : 'dashboard',
+)
 
 const fields = [
   { value: 'domain', label: '域名' },
@@ -266,7 +271,21 @@ function metricValue(metric: Metric | undefined, field: TrendField) {
   return typeof value === 'number' ? numberText(value) : '—'
 }
 
-onMounted(() => void refresh())
+function syncView() {
+  currentView.value = window.location.pathname === '/certificates' ? 'certificates' : 'dashboard'
+  if (currentView.value === 'dashboard' && !items.value.length) void refresh()
+}
+
+function navigate(path: '/' | '/certificates') {
+  if (window.location.pathname !== path) window.history.pushState({}, '', path)
+  syncView()
+}
+
+onMounted(() => {
+  window.addEventListener('popstate', syncView)
+  if (currentView.value === 'dashboard') void refresh()
+})
+onUnmounted(() => window.removeEventListener('popstate', syncView))
 </script>
 
 <template>
@@ -279,16 +298,20 @@ onMounted(() => void refresh())
           <p>每日权重、流量与域名信息快照</p>
         </div>
       </div>
-      <div class="header-actions">
+      <div v-if="currentView === 'dashboard'" class="header-actions">
+        <button class="button secondary" @click="navigate('/certificates')">证书信息</button>
         <button class="button secondary" :disabled="refreshing" @click="refresh">刷新数据</button>
         <button class="button secondary" :disabled="busyId === 'all'" @click="queueAll">
           {{ busyId === 'all' ? '正在排队…' : '采集全部' }}
         </button>
         <button class="button primary" @click="addDialog.open = true">添加域名</button>
       </div>
+      <div v-else class="header-actions">
+        <button class="button secondary" @click="navigate('/')">返回域名监控</button>
+      </div>
     </header>
 
-    <main>
+    <main v-if="currentView === 'dashboard'">
       <section class="summary-grid" aria-label="数据概览">
         <article class="summary-card">
           <span>域名总数</span><strong>{{ numberText(total) }}</strong><small>当前搜索结果</small>
@@ -383,6 +406,8 @@ onMounted(() => void refresh())
         </div>
       </section>
     </main>
+
+    <CertificatePage v-else />
 
     <div v-if="addDialog.open" class="modal-backdrop" @click.self="addDialog.open = false">
       <section class="modal small-modal" role="dialog" aria-modal="true" aria-labelledby="add-title">
