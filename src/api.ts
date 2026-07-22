@@ -1,4 +1,4 @@
-import type { ApiError, MetricsResponse, SearchResponse } from './types'
+import type { ApiError, CertificateSearchResponse, MetricsResponse, SearchResponse } from './types'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers)
@@ -47,4 +47,15 @@ export function collectAll() {
 
 export function getMetrics(id: string) {
   return request<MetricsResponse>(`/api/v1/domains/${id}/metrics`)
+}
+
+export function listCertificates(query: string, page: number, limit: number) {
+  const params = new URLSearchParams({ q: query, page: String(page), limit: String(limit) })
+  return request<CertificateSearchResponse>(`/api/v1/certificates?${params}`)
+}
+
+export function refreshCertificates() {
+  return request<{ started: boolean; message: string }>('/api/v1/certificates/refresh', {
+    method: 'POST',
+  })
 }

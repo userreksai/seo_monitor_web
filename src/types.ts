@@ -39,6 +39,35 @@ export interface LatestMetric {
   metric?: Metric
 }
 
+export interface CertificateInfo {
+  id?: string
+  domain_id: string
+  domain: string
+  issuer?: string
+  subject?: string
+  serial_number?: string
+  dns_names?: string[]
+  valid_from?: string
+  expires_at?: string
+  checked_at: string
+  hostname_valid: boolean
+  error_message?: string
+}
+
+export interface LatestCertificate {
+  domain: Domain
+  certificate?: CertificateInfo
+}
+
+export interface CertificateSearchResponse {
+  items: LatestCertificate[]
+  count: number
+  total: number
+  page: number
+  limit: number
+  q: string
+}
+
 export interface SearchResponse {
   items: LatestMetric[]
   count: number
