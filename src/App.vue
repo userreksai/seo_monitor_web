@@ -46,7 +46,11 @@ type TrendField = (typeof trendFields)[number]['value']
 
 const items = ref<LatestMetric[]>([])
 const loading = ref(false)
+const summaryLoading = ref(false)
 const total = ref(0)
+const collectedTotal = ref<number>()
+const freshTodayTotal = ref<number>()
+const summaryDomainTotal = ref<number>()
 const page = ref(1)
 const limit = ref(20)
 const selectedField = ref('domain')
@@ -67,14 +71,10 @@ const trend = reactive({
 })
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit.value)))
-const collectedCount = computed(() => items.value.filter((item) => item.metric).length)
+const refreshing = computed(() => loading.value || summaryLoading.value)
 const trafficTotal = computed(() =>
   items.value.reduce((sum, item) => sum + (item.metric?.traffic_max || 0), 0),
 )
-const freshToday = computed(() => {
-  const today = localDate(new Date())
-  return items.value.filter((item) => item.metric?.snapshot_date.slice(0, 10) === today).length
-})
 
 const trendPoints = computed(() => {
   const values = trend.items
@@ -116,6 +116,36 @@ async function load() {
   }
 }
 
+async function loadSummary() {
+  if (summaryLoading.value) return
+  summaryLoading.value = true
+  try {
+    const summaryLimit = 100
+    const first = await searchLatest('domain', '', 1, summaryLimit)
+    const pageCount = Math.ceil(first.total / summaryLimit)
+    const remaining = await Promise.all(
+      Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) =>
+        searchLatest('domain', '', index + 2, summaryLimit),
+      ),
+    )
+    const allItems = [first, ...remaining].flatMap((result) => result.items || [])
+    const today = localDate(new Date())
+    summaryDomainTotal.value = first.total
+    collectedTotal.value = allItems.filter((item) => item.metric).length
+    freshTodayTotal.value = allItems.filter(
+      (item) => item.metric?.snapshot_date.slice(0, 10) === today,
+    ).length
+  } catch (error) {
+    showNotice(messageOf(error), true)
+  } finally {
+    summaryLoading.value = false
+  }
+}
+
+async function refresh() {
+  await Promise.all([load(), loadSummary()])
+}
+
 function search() {
   appliedField.value = selectedField.value
   appliedQuery.value = query.value.trim()
@@ -123,13 +153,13 @@ function search() {
   void load()
 }
 
-function resetSearch() {
+async function resetSearch() {
   selectedField.value = 'domain'
   query.value = ''
   appliedField.value = 'domain'
   appliedQuery.value = ''
   page.value = 1
-  void load()
+  await Promise.all([load(), loadSummary()])
 }
 
 function changePage(next: number) {
@@ -147,7 +177,7 @@ async function saveDomain() {
     addDialog.open = false
     addDialog.domain = ''
     addDialog.displayName = ''
-    resetSearch()
+    await resetSearch()
   } catch (error) {
     showNotice(messageOf(error), true)
   } finally {
@@ -186,7 +216,7 @@ async function remove(item: LatestMetric) {
   try {
     await archiveDomain(item.domain.id)
     showNotice(`${item.domain.domain} 已归档`)
-    await load()
+    await Promise.all([load(), loadSummary()])
   } catch (error) {
     showNotice(messageOf(error), true)
   } finally {
@@ -236,7 +266,7 @@ function metricValue(metric: Metric | undefined, field: TrendField) {
   return typeof value === 'number' ? numberText(value) : '—'
 }
 
-onMounted(load)
+onMounted(() => void refresh())
 </script>
 
 <template>
@@ -250,7 +280,7 @@ onMounted(load)
         </div>
       </div>
       <div class="header-actions">
-        <button class="button secondary" :disabled="loading" @click="load">刷新数据</button>
+        <button class="button secondary" :disabled="refreshing" @click="refresh">刷新数据</button>
         <button class="button secondary" :disabled="busyId === 'all'" @click="queueAll">
           {{ busyId === 'all' ? '正在排队…' : '采集全部' }}
         </button>
@@ -264,10 +294,10 @@ onMounted(load)
           <span>域名总数</span><strong>{{ numberText(total) }}</strong><small>当前搜索结果</small>
         </article>
         <article class="summary-card">
-          <span>当前页已采集</span><strong>{{ collectedCount }}</strong><small>共 {{ items.length }} 条</small>
+          <span>采集成功总数</span><strong>{{ numberText(collectedTotal) }}</strong><small>共 {{ numberText(summaryDomainTotal) }} 个域名</small>
         </article>
         <article class="summary-card">
-          <span>今日新快照</span><strong>{{ freshToday }}</strong><small>当前页数据</small>
+          <span>今日采集成功</span><strong>{{ numberText(freshTodayTotal) }}</strong><small>全部域名数据</small>
         </article>
         <article class="summary-card accent-card">
           <span>当前页流量上限合计</span><strong>{{ numberText(trafficTotal) }}</strong><small>全网流量估算</small>
