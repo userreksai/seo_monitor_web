@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { listCertificates, refreshCertificates } from './api'
 import type { CertificateSummary, LatestCertificate } from './types'
 
-type CertificateStatusFilter = '' | 'checked' | 'expiring' | 'expired'
+type CertificateStatusFilter = '' | 'checked' | 'expiring' | 'expired' | 'failed'
 
 const items = ref<LatestCertificate[]>([])
 const loading = ref(false)
@@ -14,7 +14,8 @@ const limit = ref(20)
 const query = ref('')
 const appliedQuery = ref('')
 const statusFilter = ref<CertificateStatusFilter>('')
-const summary = reactive<CertificateSummary>({ total: 0, checked: 0, expiring_soon: 0, expired: 0 })
+const emptySummary = (): CertificateSummary => ({ total: 0, checked: 0, expiring_soon: 0, expired: 0, failed: 0 })
+const summary = reactive<CertificateSummary>(emptySummary())
 const notice = reactive({ text: '', error: false })
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit.value)))
@@ -22,6 +23,7 @@ const statusFilterLabel = computed(() => {
   if (statusFilter.value === 'checked') return '全部已检测'
   if (statusFilter.value === 'expiring') return '30 天内到期'
   if (statusFilter.value === 'expired') return '已过期'
+  if (statusFilter.value === 'failed') return '检测失败'
   return ''
 })
 
@@ -39,7 +41,7 @@ async function load() {
     const result = await listCertificates(appliedQuery.value, statusFilter.value, page.value, limit.value)
     items.value = result.items || []
     total.value = result.total
-    Object.assign(summary, result.summary || { total: 0, checked: 0, expiring_soon: 0, expired: 0 })
+    Object.assign(summary, result.summary || emptySummary())
     if (page.value > totalPages.value) {
       page.value = totalPages.value
       await load()
@@ -157,6 +159,9 @@ onMounted(load)
       <button class="summary-card summary-filter-card danger-card" :class="{ active: statusFilter === 'expired' }" type="button" :aria-pressed="statusFilter === 'expired'" @click="toggleStatus('expired')">
         <span>已过期</span><strong>{{ summary.expired }}</strong><small>{{ statusFilter === 'expired' ? '再次点击取消筛选' : '点击查看全部' }}</small>
       </button>
+      <button class="summary-card summary-filter-card failure-card" :class="{ active: statusFilter === 'failed' }" type="button" :aria-pressed="statusFilter === 'failed'" @click="toggleStatus('failed')">
+        <span>检测失败</span><strong>{{ summary.failed }}</strong><small>{{ statusFilter === 'failed' ? '再次点击取消筛选' : '点击查看全部' }}</small>
+      </button>
     </section>
 
     <section class="panel certificate-toolbar">
@@ -232,6 +237,7 @@ onMounted(load)
 
 <style scoped>
 .certificate-main { width: min(1680px, calc(100% - 56px)); margin: 24px auto 50px; }
+.certificate-main .summary-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .certificate-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 19px 20px; margin-bottom: 18px; }
 .certificate-toolbar h2 { margin: 0; font-size: 16px; }
 .certificate-toolbar p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
@@ -254,13 +260,16 @@ onMounted(load)
 .status-badge.pending { color: #64748b; background: #eef2f6; }
 .warning-card { border-color: #f3d598; }
 .danger-card { border-color: #f2c0bd; }
+.failure-card { border-color: #f4c5a2; }
 .warning-card strong { color: #a15c06; }
 .danger-card strong { color: #b42318; }
+.failure-card strong { color: #c2410c; }
 .summary-filter-card { width: 100%; text-align: left; }
 .summary-filter-card:hover { transform: translateY(-1px); box-shadow: 0 10px 30px rgba(28, 39, 60, .1); }
 .summary-filter-card.active { box-shadow: 0 0 0 2px var(--primary), var(--shadow); }
 @media (max-width: 980px) {
   .certificate-main { width: calc(100% - 30px); margin-top: 16px; }
+  .certificate-main .summary-grid { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 640px) {
   .certificate-toolbar { align-items: flex-start; flex-direction: column; }

@@ -75,6 +75,7 @@ export interface CertificateSummary {
   checked: number
   expiring_soon: number
   expired: number
+  failed: number
 }
 
 export interface SearchResponse {
