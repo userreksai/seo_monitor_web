@@ -1,4 +1,10 @@
-import type { ApiError, CertificateSearchResponse, MetricsResponse, SearchResponse } from './types'
+import type {
+  ApiError,
+  CertificateHistoryResponse,
+  CertificateSearchResponse,
+  MetricsResponse,
+  SearchResponse,
+} from './types'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers)
@@ -58,4 +64,8 @@ export function refreshCertificates() {
   return request<{ started: boolean; message: string }>('/api/v1/certificates/refresh', {
     method: 'POST',
   })
+}
+
+export function getCertificateHistory(id: string) {
+  return request<CertificateHistoryResponse>(`/api/v1/certificates/${id}/history`)
 }

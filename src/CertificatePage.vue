@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
-import { listCertificates, refreshCertificates } from './api'
-import type { CertificateSummary, LatestCertificate } from './types'
+import { getCertificateHistory, listCertificates, refreshCertificates } from './api'
+import type { CertificateInfo, CertificateSummary, LatestCertificate } from './types'
 
 type CertificateStatusFilter = '' | 'checked' | 'expiring' | 'expired' | 'failed'
 
@@ -17,6 +17,12 @@ const statusFilter = ref<CertificateStatusFilter>('')
 const emptySummary = (): CertificateSummary => ({ total: 0, checked: 0, expiring_soon: 0, expired: 0, failed: 0 })
 const summary = reactive<CertificateSummary>(emptySummary())
 const notice = reactive({ text: '', error: false })
+const history = reactive({
+  open: false,
+  loading: false,
+  domain: '',
+  items: [] as CertificateInfo[],
+})
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit.value)))
 const statusFilterLabel = computed(() => {
@@ -97,6 +103,22 @@ async function startRefresh() {
   }
 }
 
+async function openHistory(item: LatestCertificate) {
+  history.open = true
+  history.loading = true
+  history.domain = item.domain.domain
+  history.items = []
+  try {
+    const result = await getCertificateHistory(item.domain.id)
+    history.items = result.items || []
+  } catch (error) {
+    showNotice(messageOf(error), true)
+    history.open = false
+  } finally {
+    history.loading = false
+  }
+}
+
 function daysRemaining(value?: string) {
   if (!value) return undefined
   const expires = new Date(value).getTime()
@@ -105,8 +127,7 @@ function daysRemaining(value?: string) {
   return difference < 0 ? Math.floor(difference / 86_400_000) : Math.ceil(difference / 86_400_000)
 }
 
-function statusOf(item: LatestCertificate) {
-  const certificate = item.certificate
+function certificateStatus(certificate?: CertificateInfo) {
   if (!certificate) return { label: '待检测', className: 'pending' }
   if (certificate.error_message) return { label: '检测失败', className: 'error' }
   if (!certificate.hostname_valid) return { label: '域名不匹配', className: 'warning' }
@@ -115,6 +136,10 @@ function statusOf(item: LatestCertificate) {
   if (days < 0) return { label: '已过期', className: 'error' }
   if (days <= 30) return { label: '即将到期', className: 'warning' }
   return { label: '有效', className: 'healthy' }
+}
+
+function statusOf(item: LatestCertificate) {
+  return certificateStatus(item.certificate)
 }
 
 function remainingText(value?: string) {
@@ -167,7 +192,7 @@ onMounted(load)
     <section class="panel certificate-toolbar">
       <div>
         <h2>SSL 证书信息</h2>
-        <p>自动读取域名 443 端口的当前证书；服务启动时及每日定时更新。</p>
+        <p>自动读取域名 443 端口的当前证书；每日轮询记录保留一周，连续失败时额外保留上一周有效数据。</p>
       </div>
       <div class="toolbar-actions">
         <button class="button ghost" :disabled="loading" @click="load">刷新数据</button>
@@ -205,11 +230,11 @@ onMounted(load)
       <div class="table-wrap">
         <table class="certificate-table">
           <thead>
-            <tr><th>域名</th><th>证书到期时间</th><th>剩余时间</th><th>状态</th><th>颁发机构</th><th>最近检测</th></tr>
+            <tr><th>域名</th><th>证书到期时间</th><th>剩余时间</th><th>状态</th><th>颁发机构</th><th>最近检测</th><th>操作</th></tr>
           </thead>
           <tbody>
-            <tr v-if="loading"><td colspan="6"><div class="empty-state"><span class="spinner"></span>正在读取证书信息…</div></td></tr>
-            <tr v-else-if="!items.length"><td colspan="6"><div class="empty-state">没有符合条件的证书信息</div></td></tr>
+            <tr v-if="loading"><td colspan="7"><div class="empty-state"><span class="spinner"></span>正在读取证书信息…</div></td></tr>
+            <tr v-else-if="!items.length"><td colspan="7"><div class="empty-state">没有符合条件的证书信息</div></td></tr>
             <tr v-for="item in items" v-else :key="item.domain.id">
               <td class="certificate-domain">
                 <strong>{{ item.domain.domain }}</strong>
@@ -220,6 +245,7 @@ onMounted(load)
               <td><span class="status-badge" :class="statusOf(item).className">{{ statusOf(item).label }}</span></td>
               <td class="issuer-cell"><strong>{{ item.certificate?.issuer || '—' }}</strong><small v-if="item.certificate?.error_message" :title="item.certificate.error_message">{{ item.certificate.error_message }}</small></td>
               <td>{{ dateText(item.certificate?.checked_at, true) }}</td>
+              <td><button class="history-button" type="button" @click="openHistory(item)">轮询记录</button></td>
             </tr>
           </tbody>
         </table>
@@ -230,6 +256,36 @@ onMounted(load)
         <div><button :disabled="page <= 1 || loading" @click="changePage(page - 1)">上一页</button><button :disabled="page >= totalPages || loading" @click="changePage(page + 1)">下一页</button></div>
       </div>
     </section>
+
+    <div v-if="history.open" class="modal-backdrop" @click.self="history.open = false">
+      <section class="modal history-modal" role="dialog" aria-modal="true" aria-labelledby="history-title">
+        <div class="modal-heading">
+          <div>
+            <h2 id="history-title">{{ history.domain }} 轮询记录</h2>
+            <p>最近一周记录；连续失败时同时保留最近一次成功检测向前一周的数据</p>
+          </div>
+          <button class="close-button" type="button" @click="history.open = false">×</button>
+        </div>
+        <div v-if="history.loading" class="chart-empty"><span class="spinner"></span>正在读取轮询记录…</div>
+        <div v-else-if="!history.items.length" class="chart-empty">暂无轮询记录</div>
+        <div v-else class="table-wrap history-table-wrap">
+          <table class="history-table">
+            <thead>
+              <tr><th>检测日期</th><th>状态</th><th>证书到期</th><th>检测来源</th><th>结果详情</th></tr>
+            </thead>
+            <tbody>
+              <tr v-for="record in history.items" :key="`${record.check_date || record.checked_at}-${record.checked_at}`">
+                <td><strong>{{ dateText(record.check_date || record.checked_at) }}</strong><small>{{ dateText(record.checked_at, true) }}</small></td>
+                <td><span class="status-badge" :class="certificateStatus(record).className">{{ certificateStatus(record).label }}</span></td>
+                <td>{{ dateText(record.expires_at) }}</td>
+                <td><strong>{{ record.check_source || 'master' }}</strong><small v-if="record.resolved_address">{{ record.resolved_address }}</small></td>
+                <td class="history-detail">{{ record.error_message || record.issuer || '检测成功' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
 
     <Transition name="toast"><div v-if="notice.text" class="toast" :class="{ error: notice.error }">{{ notice.text }}</div></Transition>
   </main>
@@ -251,6 +307,7 @@ onMounted(load)
 .certificate-table th:nth-child(3) { width: 130px; }
 .certificate-table th:nth-child(4) { width: 130px; }
 .certificate-table th:nth-child(6) { width: 180px; }
+.certificate-table th:nth-child(7) { width: 100px; }
 .certificate-domain strong, .issuer-cell strong { display: block; color: #172033; }
 .certificate-domain span, .certificate-table td small { display: block; max-width: 320px; margin-top: 5px; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .status-badge { display: inline-flex; align-items: center; padding: 4px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
@@ -267,6 +324,16 @@ onMounted(load)
 .summary-filter-card { width: 100%; text-align: left; }
 .summary-filter-card:hover { transform: translateY(-1px); box-shadow: 0 10px 30px rgba(28, 39, 60, .1); }
 .summary-filter-card.active { box-shadow: 0 0 0 2px var(--primary), var(--shadow); }
+.history-button { padding: 5px 9px; color: var(--primary); background: #eef4ff; border: 1px solid #cddcff; border-radius: 6px; white-space: nowrap; }
+.history-modal { width: min(1040px, calc(100% - 32px)); }
+.history-table-wrap { max-height: 62vh; overflow: auto; }
+.history-table { min-width: 820px; }
+.history-table th:first-child { width: 180px; }
+.history-table th:nth-child(2) { width: 110px; }
+.history-table th:nth-child(3) { width: 150px; }
+.history-table th:nth-child(4) { width: 210px; }
+.history-table td small { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; }
+.history-detail { max-width: 340px; overflow-wrap: anywhere; }
 @media (max-width: 980px) {
   .certificate-main { width: calc(100% - 30px); margin-top: 16px; }
   .certificate-main .summary-grid { grid-template-columns: repeat(2, 1fr); }

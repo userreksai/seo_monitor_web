@@ -49,8 +49,11 @@ export interface CertificateInfo {
   dns_names?: string[]
   valid_from?: string
   expires_at?: string
+  check_date?: string
   checked_at: string
   hostname_valid: boolean
+  check_source?: string
+  resolved_address?: string
   error_message?: string
 }
 
@@ -68,6 +71,11 @@ export interface CertificateSearchResponse {
   q: string
   status: string
   summary: CertificateSummary
+}
+
+export interface CertificateHistoryResponse {
+  items: CertificateInfo[]
+  count: number
 }
 
 export interface CertificateSummary {
