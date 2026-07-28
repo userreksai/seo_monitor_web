@@ -5,10 +5,11 @@ import {
   collectAll,
   collectDomain,
   createDomain,
+  getCollectionProgress,
   getMetrics,
   searchLatest,
 } from './api'
-import type { LatestMetric, Metric } from './types'
+import type { CollectionProgress, LatestMetric, Metric } from './types'
 import CertificatePage from './CertificatePage.vue'
 
 const currentView = ref<'dashboard' | 'certificates'>(
@@ -55,6 +56,7 @@ const summaryLoading = ref(false)
 const total = ref(0)
 const collectedTotal = ref<number>()
 const freshTodayTotal = ref<number>()
+const failedTotal = ref<number>()
 const summaryDomainTotal = ref<number>()
 const page = ref(1)
 const limit = ref(20)
@@ -62,8 +64,22 @@ const selectedField = ref('domain')
 const query = ref('')
 const appliedField = ref('domain')
 const appliedQuery = ref('')
+const failedOnly = ref(false)
 const notice = reactive({ text: '', error: false })
 const busyId = ref('')
+const showCollectionProgress = ref(false)
+const collectionProgress = reactive<CollectionProgress>({
+  snapshot_date: '',
+  in_progress: false,
+  total: 0,
+  completed: 0,
+  pending: 0,
+  queued: 0,
+  running: 0,
+  succeeded: 0,
+  failed: 0,
+  canceled: 0,
+})
 
 const addDialog = reactive({ open: false, domain: '', displayName: '', saving: false })
 const trend = reactive({
@@ -77,6 +93,11 @@ const trend = reactive({
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit.value)))
 const refreshing = computed(() => loading.value || summaryLoading.value)
+const collectionBusy = computed(() => busyId.value === 'all' || collectionProgress.in_progress)
+const collectionProgressPercent = computed(() => {
+  if (!collectionProgress.total) return 0
+  return Math.min(100, Math.round((collectionProgress.completed / collectionProgress.total) * 100))
+})
 const trafficTotal = computed(() =>
   items.value.reduce((sum, item) => sum + (item.metric?.traffic_max || 0), 0),
 )
@@ -107,7 +128,13 @@ function showNotice(text: string, error = false) {
 async function load() {
   loading.value = true
   try {
-    const result = await searchLatest(appliedField.value, appliedQuery.value, page.value, limit.value)
+    const result = await searchLatest(
+      appliedField.value,
+      appliedQuery.value,
+      page.value,
+      limit.value,
+      failedOnly.value ? 'failed' : '',
+    )
     items.value = result.items || []
     total.value = result.total
     if (page.value > totalPages.value) {
@@ -140,6 +167,7 @@ async function loadSummary() {
     freshTodayTotal.value = allItems.filter(
       (item) => item.metric?.snapshot_date.slice(0, 10) === today,
     ).length
+    failedTotal.value = allItems.filter((item) => item.collection?.status === 'failed').length
   } catch (error) {
     showNotice(messageOf(error), true)
   } finally {
@@ -158,11 +186,18 @@ function search() {
   void load()
 }
 
+function toggleFailed() {
+  failedOnly.value = !failedOnly.value
+  page.value = 1
+  void load()
+}
+
 async function resetSearch() {
   selectedField.value = 'domain'
   query.value = ''
   appliedField.value = 'domain'
   appliedQuery.value = ''
+  failedOnly.value = false
   page.value = 1
   await Promise.all([load(), loadSummary()])
 }
@@ -208,10 +243,34 @@ async function queueAll() {
   try {
     const result = await collectAll()
     showNotice(`已加入队列：${result.queued} 个域名`)
+    showCollectionProgress.value = true
+    await pollCollectionProgress()
   } catch (error) {
     showNotice(messageOf(error), true)
   } finally {
     busyId.value = ''
+  }
+}
+
+let collectionPollTimer = 0
+async function pollCollectionProgress() {
+  window.clearTimeout(collectionPollTimer)
+  const wasInProgress = collectionProgress.in_progress
+  try {
+    const result = await getCollectionProgress()
+    Object.assign(collectionProgress, result)
+    if (result.in_progress) {
+      showCollectionProgress.value = true
+      collectionPollTimer = window.setTimeout(pollCollectionProgress, 1500)
+    } else if (wasInProgress) {
+      showCollectionProgress.value = true
+      showNotice(`采集完成：成功 ${result.succeeded}，失败 ${result.failed}`)
+      await Promise.all([load(), loadSummary()])
+    }
+  } catch (error) {
+    if (wasInProgress || showCollectionProgress.value) {
+      collectionPollTimer = window.setTimeout(pollCollectionProgress, 3000)
+    }
   }
 }
 
@@ -273,7 +332,10 @@ function metricValue(metric: Metric | undefined, field: TrendField) {
 
 function syncView() {
   currentView.value = window.location.pathname === '/certificates' ? 'certificates' : 'dashboard'
-  if (currentView.value === 'dashboard' && !items.value.length) void refresh()
+  if (currentView.value === 'dashboard') {
+    if (!items.value.length) void refresh()
+    void pollCollectionProgress()
+  }
 }
 
 function navigate(path: '/' | '/certificates') {
@@ -283,9 +345,15 @@ function navigate(path: '/' | '/certificates') {
 
 onMounted(() => {
   window.addEventListener('popstate', syncView)
-  if (currentView.value === 'dashboard') void refresh()
+  if (currentView.value === 'dashboard') {
+    void refresh()
+    void pollCollectionProgress()
+  }
 })
-onUnmounted(() => window.removeEventListener('popstate', syncView))
+onUnmounted(() => {
+  window.removeEventListener('popstate', syncView)
+  window.clearTimeout(collectionPollTimer)
+})
 </script>
 
 <template>
@@ -301,8 +369,8 @@ onUnmounted(() => window.removeEventListener('popstate', syncView))
       <div v-if="currentView === 'dashboard'" class="header-actions">
         <button class="button secondary" @click="navigate('/certificates')">证书信息</button>
         <button class="button secondary" :disabled="refreshing" @click="refresh">刷新数据</button>
-        <button class="button secondary" :disabled="busyId === 'all'" @click="queueAll">
-          {{ busyId === 'all' ? '正在排队…' : '采集全部' }}
+        <button class="button secondary" :disabled="collectionBusy" @click="queueAll">
+          {{ collectionProgress.in_progress ? `采集中 ${collectionProgressPercent}%` : busyId === 'all' ? '正在排队…' : '采集全部' }}
         </button>
         <button class="button primary" @click="addDialog.open = true">添加域名</button>
       </div>
@@ -312,7 +380,7 @@ onUnmounted(() => window.removeEventListener('popstate', syncView))
     </header>
 
     <main v-if="currentView === 'dashboard'">
-      <section class="summary-grid" aria-label="数据概览">
+      <section class="summary-grid dashboard-summary" aria-label="数据概览">
         <article class="summary-card">
           <span>域名总数</span><strong>{{ numberText(total) }}</strong><small>当前搜索结果</small>
         </article>
@@ -322,9 +390,25 @@ onUnmounted(() => window.removeEventListener('popstate', syncView))
         <article class="summary-card">
           <span>今日采集成功</span><strong>{{ numberText(freshTodayTotal) }}</strong><small>全部域名数据</small>
         </article>
+        <button class="summary-card summary-filter-card collection-failure-card" :class="{ active: failedOnly }" type="button" :aria-pressed="failedOnly" @click="toggleFailed">
+          <span>采集失败总数</span><strong>{{ numberText(failedTotal) }}</strong><small>{{ failedOnly ? '再次点击取消筛选' : '点击查看失败域名' }}</small>
+        </button>
         <article class="summary-card accent-card">
           <span>当前页流量上限合计</span><strong>{{ numberText(trafficTotal) }}</strong><small>全网流量估算</small>
         </article>
+      </section>
+
+      <section v-if="showCollectionProgress && collectionProgress.total" class="panel task-progress" aria-live="polite">
+        <div class="task-progress-heading">
+          <div>
+            <strong>{{ collectionProgress.in_progress ? '正在采集全部域名' : '本次采集已完成' }}</strong>
+            <span>{{ collectionProgress.completed }} / {{ collectionProgress.total }}（成功 {{ collectionProgress.succeeded }}，失败 {{ collectionProgress.failed }}）</span>
+          </div>
+          <b>{{ collectionProgressPercent }}%</b>
+        </div>
+        <div class="progress-track" role="progressbar" :aria-valuenow="collectionProgress.completed" aria-valuemin="0" :aria-valuemax="collectionProgress.total">
+          <span :style="{ width: `${collectionProgressPercent}%` }"></span>
+        </div>
       </section>
 
       <section class="panel search-panel">
@@ -342,8 +426,10 @@ onUnmounted(() => window.removeEventListener('popstate', syncView))
           <button class="button primary search-button" type="submit">搜索</button>
           <button class="button ghost search-button" type="button" @click="resetSearch">重置</button>
         </form>
-        <p v-if="appliedQuery" class="filter-tip">
-          正在按“{{ fields.find((item) => item.value === appliedField)?.label }}”查询：{{ appliedQuery }}
+        <p v-if="appliedQuery || failedOnly" class="filter-tip">
+          <template v-if="failedOnly">当前显示：采集失败，共 {{ total }} 个域名。</template>
+          <template v-if="appliedQuery">正在按“{{ fields.find((item) => item.value === appliedField)?.label }}”查询：{{ appliedQuery }}</template>
+          <button v-if="failedOnly" type="button" @click="toggleFailed">清除失败筛选</button>
         </p>
       </section>
 
@@ -373,6 +459,9 @@ onUnmounted(() => window.removeEventListener('popstate', syncView))
                   <strong>{{ item.domain.domain }}</strong>
                   <span>{{ item.domain.display_name || '未设置显示名称' }}</span>
                   <small>{{ item.metric ? dateText(item.metric.snapshot_date) : '尚未采集' }}</small>
+                  <small v-if="item.collection?.status === 'failed'" class="collection-error" :title="item.collection.error_message">
+                    采集失败：{{ item.collection.error_message || '未知错误' }}
+                  </small>
                 </td>
                 <td><strong class="traffic">{{ item.metric?.traffic_text || numberText(item.metric?.traffic_max) }}</strong><small class="cell-sub">{{ item.metric ? `${numberText(item.metric.traffic_min)} ～ ${numberText(item.metric.traffic_max)}` : '—' }}</small></td>
                 <td>

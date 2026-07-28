@@ -37,6 +37,21 @@ export interface Metric {
 export interface LatestMetric {
   domain: Domain
   metric?: Metric
+  collection?: CollectionJob
+}
+
+export interface CollectionJob {
+  id: string
+  domain_id: string
+  domain?: string
+  snapshot_date: string
+  status: 'queued' | 'running' | 'succeeded' | 'failed' | 'canceled'
+  requested_by: string
+  attempt_count: number
+  queued_at: string
+  started_at?: string
+  finished_at?: string
+  error_message?: string
 }
 
 export interface CertificateInfo {
@@ -94,6 +109,30 @@ export interface SearchResponse {
   limit: number
   field: string
   q: string
+  status: string
+}
+
+export interface TaskProgress {
+  running: boolean
+  total: number
+  completed: number
+  succeeded: number
+  failed: number
+  started_at?: string
+  finished_at?: string
+}
+
+export interface CollectionProgress {
+  snapshot_date: string
+  in_progress: boolean
+  total: number
+  completed: number
+  pending: number
+  queued: number
+  running: number
+  succeeded: number
+  failed: number
+  canceled: number
 }
 
 export interface MetricsResponse {
