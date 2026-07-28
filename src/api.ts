@@ -2,8 +2,10 @@ import type {
   ApiError,
   CertificateHistoryResponse,
   CertificateSearchResponse,
+  CollectionProgress,
   MetricsResponse,
   SearchResponse,
+  TaskProgress,
 } from './types'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -24,8 +26,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T
 }
 
-export function searchLatest(field: string, query: string, page: number, limit: number) {
-  const params = new URLSearchParams({ field, q: query, page: String(page), limit: String(limit) })
+export function searchLatest(field: string, query: string, page: number, limit: number, status = '') {
+  const params = new URLSearchParams({ field, q: query, page: String(page), limit: String(limit), status })
   return request<SearchResponse>(`/api/v1/search?${params}`)
 }
 
@@ -51,6 +53,10 @@ export function collectAll() {
   return request<{ queued: number; snapshot_date: string }>('/api/v1/collect', { method: 'POST' })
 }
 
+export function getCollectionProgress() {
+  return request<CollectionProgress>('/api/v1/collect/progress')
+}
+
 export function getMetrics(id: string) {
   return request<MetricsResponse>(`/api/v1/domains/${id}/metrics`)
 }
@@ -61,9 +67,13 @@ export function listCertificates(query: string, status: string, page: number, li
 }
 
 export function refreshCertificates() {
-  return request<{ started: boolean; message: string }>('/api/v1/certificates/refresh', {
+  return request<{ started: boolean; message: string; progress: TaskProgress }>('/api/v1/certificates/refresh', {
     method: 'POST',
   })
+}
+
+export function getCertificateProgress() {
+  return request<TaskProgress>('/api/v1/certificates/progress')
 }
 
 export function getCertificateHistory(id: string) {

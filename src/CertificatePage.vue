@@ -1,13 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { getCertificateHistory, listCertificates, refreshCertificates } from './api'
-import type { CertificateInfo, CertificateSummary, LatestCertificate } from './types'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { getCertificateHistory, getCertificateProgress, listCertificates, refreshCertificates } from './api'
+import type { CertificateInfo, CertificateSummary, LatestCertificate, TaskProgress } from './types'
 
 type CertificateStatusFilter = '' | 'checked' | 'expiring' | 'expired' | 'failed'
 
 const items = ref<LatestCertificate[]>([])
 const loading = ref(false)
 const refreshing = ref(false)
+const showProgress = ref(false)
 const total = ref(0)
 const page = ref(1)
 const limit = ref(20)
@@ -17,6 +18,13 @@ const statusFilter = ref<CertificateStatusFilter>('')
 const emptySummary = (): CertificateSummary => ({ total: 0, checked: 0, expiring_soon: 0, expired: 0, failed: 0 })
 const summary = reactive<CertificateSummary>(emptySummary())
 const notice = reactive({ text: '', error: false })
+const progress = reactive<TaskProgress>({
+  running: false,
+  total: 0,
+  completed: 0,
+  succeeded: 0,
+  failed: 0,
+})
 const history = reactive({
   open: false,
   loading: false,
@@ -25,6 +33,11 @@ const history = reactive({
 })
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit.value)))
+const refreshBusy = computed(() => refreshing.value || progress.running)
+const progressPercent = computed(() => {
+  if (!progress.total) return 0
+  return Math.min(100, Math.round((progress.completed / progress.total) * 100))
+})
 const statusFilterLabel = computed(() => {
   if (statusFilter.value === 'checked') return '全部已检测'
   if (statusFilter.value === 'expiring') return '30 天内到期'
@@ -95,11 +108,38 @@ async function startRefresh() {
   refreshing.value = true
   try {
     const result = await refreshCertificates()
+    Object.assign(progress, result.progress)
+    showProgress.value = true
     showNotice(result.message || (result.started ? '证书检测任务已启动' : '证书检测任务正在执行'))
+    scheduleProgressPoll()
   } catch (error) {
     showNotice(messageOf(error), true)
   } finally {
     refreshing.value = false
+  }
+}
+
+let progressPollTimer = 0
+function scheduleProgressPoll(delay = 1000) {
+  window.clearTimeout(progressPollTimer)
+  progressPollTimer = window.setTimeout(pollProgress, delay)
+}
+
+async function pollProgress() {
+  const wasRunning = progress.running
+  try {
+    const result = await getCertificateProgress()
+    Object.assign(progress, result)
+    if (result.running) {
+      showProgress.value = true
+      scheduleProgressPoll()
+    } else if (wasRunning) {
+      showProgress.value = true
+      showNotice(`证书检测完成：成功 ${result.succeeded}，失败 ${result.failed}`)
+      await load()
+    }
+  } catch {
+    if (wasRunning || showProgress.value) scheduleProgressPoll(3000)
   }
 }
 
@@ -166,7 +206,11 @@ function messageOf(error: unknown) {
   return error instanceof Error ? error.message : '请求失败，请稍后重试'
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  void pollProgress()
+})
+onUnmounted(() => window.clearTimeout(progressPollTimer))
 </script>
 
 <template>
@@ -196,9 +240,22 @@ onMounted(load)
       </div>
       <div class="toolbar-actions">
         <button class="button ghost" :disabled="loading" @click="load">刷新数据</button>
-        <button class="button primary" :disabled="refreshing" @click="startRefresh">
-          {{ refreshing ? '正在提交…' : '检测全部证书' }}
+        <button class="button primary" :disabled="refreshBusy" @click="startRefresh">
+          {{ progress.running ? `检测中 ${progressPercent}%` : refreshing ? '正在提交…' : '检测全部证书' }}
         </button>
+      </div>
+    </section>
+
+    <section v-if="showProgress && progress.total" class="panel task-progress" aria-live="polite">
+      <div class="task-progress-heading">
+        <div>
+          <strong>{{ progress.running ? '正在检测全部证书' : '本次证书检测已完成' }}</strong>
+          <span>{{ progress.completed }} / {{ progress.total }}（成功 {{ progress.succeeded }}，失败 {{ progress.failed }}）</span>
+        </div>
+        <b>{{ progressPercent }}%</b>
+      </div>
+      <div class="progress-track" role="progressbar" :aria-valuenow="progress.completed" aria-valuemin="0" :aria-valuemax="progress.total">
+        <span :style="{ width: `${progressPercent}%` }"></span>
       </div>
     </section>
 
