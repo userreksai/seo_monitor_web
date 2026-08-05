@@ -8,6 +8,7 @@ type CertificateStatusFilter = '' | 'checked' | 'expiring' | 'expired' | 'failed
 const items = ref<LatestCertificate[]>([])
 const loading = ref(false)
 const refreshing = ref(false)
+const exporting = ref(false)
 const showProgress = ref(false)
 const total = ref(0)
 const page = ref(1)
@@ -34,6 +35,7 @@ const history = reactive({
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit.value)))
 const refreshBusy = computed(() => refreshing.value || progress.running)
+const exportBusy = computed(() => loading.value || exporting.value)
 const progressPercent = computed(() => {
   if (!progress.total) return 0
   return Math.min(100, Math.round((progress.completed / progress.total) * 100))
@@ -102,6 +104,91 @@ function changePage(next: number) {
   if (next < 1 || next > totalPages.value || next === page.value) return
   page.value = next
   void load()
+}
+
+async function exportCertificates() {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    const exportQuery = appliedQuery.value
+    const exportStatus = statusFilter.value
+    const exportItems: LatestCertificate[] = []
+    let exportPage = 1
+    let exportTotal = 0
+
+    do {
+      const result = await listCertificates(exportQuery, exportStatus, exportPage, 100)
+      const resultItems = result.items || []
+      exportItems.push(...resultItems)
+      exportTotal = result.total
+      exportPage += 1
+      if (!resultItems.length) break
+    } while (exportItems.length < exportTotal)
+
+    if (!exportItems.length) {
+      showNotice('没有可导出的证书数据')
+      return
+    }
+
+    const rows = exportItems.map((item) => {
+      const certificate = item.certificate
+      return [
+        item.domain.domain,
+        item.domain.display_name || '',
+        dateText(certificate?.expires_at),
+        remainingText(certificate?.expires_at),
+        statusOf(item).label,
+        certificate?.issuer || '',
+        dateText(certificate?.valid_from),
+        dateText(certificate?.checked_at, true),
+        certificate ? (certificate.hostname_valid ? '是' : '否') : '',
+        certificate?.check_source || '',
+        certificate?.resolved_address || '',
+        certificate?.error_message || '',
+      ]
+    })
+    const headers = ['域名', '显示名称', '证书到期时间', '剩余时间', '状态', '颁发机构', '证书生效时间', '最近检测时间', '域名匹配', '检测来源', '解析地址', '错误信息']
+    const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n')
+    downloadCsv(`证书-${exportFileLabel(exportStatus)}-${localDateStamp()}.csv`, csv)
+    showNotice(`已导出 ${exportItems.length} 条证书数据`)
+  } catch (error) {
+    showNotice(`导出失败：${messageOf(error)}`, true)
+  } finally {
+    exporting.value = false
+  }
+}
+
+function csvCell(value: unknown) {
+  let text = value === undefined || value === null ? '' : String(value)
+  if (/^[=+\-@]/.test(text)) text = `'${text}`
+  return `"${text.replace(/"/g, '""')}"`
+}
+
+function downloadCsv(filename: string, csv: string) {
+  const url = URL.createObjectURL(new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+function exportFileLabel(status: CertificateStatusFilter) {
+  if (status === 'expiring') return '30天内到期'
+  if (status === 'expired') return '已过期'
+  if (status === 'failed') return '检测失败'
+  if (status === 'checked') return '全部已检测'
+  return '全部'
+}
+
+function localDateStamp() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}${month}${day}`
 }
 
 async function startRefresh() {
@@ -277,11 +364,16 @@ onUnmounted(() => window.clearTimeout(progressPollTimer))
     <section class="panel table-panel">
       <div class="table-heading">
         <div><h2>域名证书列表</h2><p>即将到期按 30 天以内计算</p></div>
-        <label class="page-size">每页
-          <select v-model.number="limit" @change="page = 1; load()">
-            <option :value="10">10</option><option :value="20">20</option><option :value="50">50</option><option :value="100">100</option>
-          </select>
-        </label>
+        <div class="table-heading-actions">
+          <button class="button ghost export-button" type="button" :disabled="exportBusy || total === 0" @click="exportCertificates">
+            {{ exporting ? '正在导出…' : statusFilter ? `导出 ${statusFilterLabel}` : '导出全部数据' }}
+          </button>
+          <label class="page-size">每页
+            <select v-model.number="limit" @change="page = 1; load()">
+              <option :value="10">10</option><option :value="20">20</option><option :value="50">50</option><option :value="100">100</option>
+            </select>
+          </label>
+        </div>
       </div>
 
       <div class="table-wrap">
@@ -358,6 +450,8 @@ onUnmounted(() => window.clearTimeout(progressPollTimer))
 .certificate-search { display: grid; grid-template-columns: minmax(260px, 1fr) auto auto; align-items: end; gap: 12px; }
 .certificate-filter-tip { margin: 12px 0 0; color: var(--primary); font-size: 12px; }
 .certificate-filter-tip button { padding: 0; color: inherit; background: transparent; border: 0; text-decoration: underline; }
+.table-heading-actions { display: flex; align-items: center; gap: 12px; }
+.export-button { min-width: 118px; }
 .certificate-table { min-width: 1080px; }
 .certificate-table th:first-child { width: 260px; }
 .certificate-table th:nth-child(2) { width: 190px; }
@@ -401,5 +495,7 @@ onUnmounted(() => window.clearTimeout(progressPollTimer))
   .toolbar-actions .button { flex: 1; }
   .certificate-search { grid-template-columns: 1fr 1fr; }
   .certificate-search label { grid-column: 1 / -1; }
+  .table-heading { align-items: flex-start; flex-direction: column; }
+  .table-heading-actions { width: 100%; justify-content: space-between; }
 }
 </style>
