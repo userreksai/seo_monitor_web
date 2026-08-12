@@ -56,8 +56,24 @@ export function changePassword(currentPassword: string, newPassword: string) {
 	})
 }
 
-export function searchLatest(field: string, query: string, page: number, limit: number, status = '') {
-  const params = new URLSearchParams({ field, q: query, page: String(page), limit: String(limit), status })
+export function searchLatest(
+  field: string,
+  query: string,
+  page: number,
+  limit: number,
+  status = '',
+  sortBy = '',
+  sortOrder = '',
+) {
+  const params = new URLSearchParams({
+    field,
+    q: query,
+    page: String(page),
+    limit: String(limit),
+    status,
+    sort_by: sortBy,
+    sort_order: sortOrder,
+  })
   return request<SearchResponse>(`/api/v1/search?${params}`)
 }
 

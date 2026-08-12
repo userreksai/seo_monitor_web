@@ -54,6 +54,18 @@ const trendFields = [
 ] as const
 
 type TrendField = (typeof trendFields)[number]['value']
+type SortField = 'traffic' | 'weight' | 'rank'
+type SortOrder = 'asc' | 'desc'
+
+const weightFields = [
+  'baidu_pc_weight',
+  'baidu_mobile_weight',
+  'sogou_weight',
+  'bing_weight',
+  'so_360_weight',
+  'shenma_weight',
+  'pr_weight',
+] as const
 
 const items = ref<LatestMetric[]>([])
 const loading = ref(false)
@@ -70,6 +82,8 @@ const query = ref('')
 const appliedField = ref('domain')
 const appliedQuery = ref('')
 const failedOnly = ref(false)
+const sortField = ref<SortField | ''>('')
+const sortOrder = ref<SortOrder>('asc')
 const notice = reactive({ text: '', error: false })
 const busyId = ref('')
 const showCollectionProgress = ref(false)
@@ -141,6 +155,8 @@ async function load() {
       page.value,
       limit.value,
       failedOnly.value ? 'failed' : '',
+      sortField.value,
+      sortField.value ? sortOrder.value : '',
     )
     items.value = result.items || []
     total.value = result.total
@@ -199,12 +215,35 @@ function toggleFailed() {
   void load()
 }
 
+function toggleSort(field: SortField) {
+  if (sortField.value === field) {
+    sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortField.value = field
+    sortOrder.value = 'asc'
+  }
+  page.value = 1
+  void load()
+}
+
+function sortAria(field: SortField) {
+  if (sortField.value !== field) return 'none'
+  return sortOrder.value === 'asc' ? 'ascending' : 'descending'
+}
+
+function sortButtonLabel(field: SortField, label: string) {
+  const nextOrder = sortField.value === field && sortOrder.value === 'asc' ? '降序' : '升序'
+  return `${label}，点击按数值${nextOrder}排列`
+}
+
 async function resetSearch() {
   selectedField.value = 'domain'
   query.value = ''
   appliedField.value = 'domain'
   appliedQuery.value = ''
   failedOnly.value = false
+  sortField.value = ''
+  sortOrder.value = 'asc'
   page.value = 1
   await Promise.all([load(), loadSummary()])
 }
@@ -335,6 +374,14 @@ function numberText(value?: number) {
 function metricValue(metric: Metric | undefined, field: TrendField) {
   const value = metric?.[field]
   return typeof value === 'number' ? numberText(value) : '—'
+}
+
+function totalWeight(metric?: Metric) {
+  if (!metric) return undefined
+  const values = weightFields
+    .map((field) => metric[field])
+    .filter((value): value is number => typeof value === 'number')
+  return values.length ? values.reduce((sum, value) => sum + value, 0) : undefined
 }
 
 function syncView() {
@@ -544,7 +591,22 @@ onUnmounted(() => {
           <table>
             <thead>
               <tr>
-                <th class="sticky-column">域名 / 快照</th><th>全网流量</th><th>综合权重</th><th>排名 / 分类</th>
+                <th class="sticky-column">域名 / 快照</th>
+                <th :aria-sort="sortAria('traffic')">
+                  <button class="sort-button" type="button" :disabled="loading" :aria-label="sortButtonLabel('traffic', '全网流量')" @click="toggleSort('traffic')">
+                    全网流量 <span aria-hidden="true">{{ sortField === 'traffic' ? (sortOrder === 'asc' ? '↑' : '↓') : '↕' }}</span>
+                  </button>
+                </th>
+                <th :aria-sort="sortAria('weight')">
+                  <button class="sort-button" type="button" :disabled="loading" :aria-label="sortButtonLabel('weight', '综合权重')" @click="toggleSort('weight')">
+                    综合权重 <span aria-hidden="true">{{ sortField === 'weight' ? (sortOrder === 'asc' ? '↑' : '↓') : '↕' }}</span>
+                  </button>
+                </th>
+                <th :aria-sort="sortAria('rank')">
+                  <button class="sort-button" type="button" :disabled="loading" :aria-label="sortButtonLabel('rank', '排名 / 分类')" @click="toggleSort('rank')">
+                    排名 / 分类 <span aria-hidden="true">{{ sortField === 'rank' ? (sortOrder === 'asc' ? '↑' : '↓') : '↕' }}</span>
+                  </button>
+                </th>
                 <th>反向链接</th><th>注册信息</th><th>域名年龄</th><th class="actions-column">操作</th>
               </tr>
             </thead>
@@ -571,6 +633,7 @@ onUnmounted(() => {
                     <span class="weight shenma" title="神马">神 {{ metricValue(item.metric, 'shenma_weight') }}</span>
                     <span class="weight pr" title="PR">PR {{ metricValue(item.metric, 'pr_weight') }}</span>
                   </div>
+                  <small class="weight-total">总计 {{ numberText(totalWeight(item.metric)) }}</small>
                 </td>
                 <td><strong>{{ numberText(item.metric?.apppc_pc_rank) }}</strong><small class="cell-sub">{{ item.metric?.site_category || '未分类' }}</small></td>
                 <td><strong>{{ numberText(item.metric?.backlink_count) }}</strong></td>

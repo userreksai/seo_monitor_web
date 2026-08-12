@@ -110,6 +110,8 @@ export interface SearchResponse {
   field: string
   q: string
   status: string
+  sort_by: string
+  sort_order: string
 }
 
 export interface TaskProgress {
