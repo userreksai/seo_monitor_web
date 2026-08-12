@@ -1,16 +1,37 @@
 import type {
   ApiError,
+  AuthUser,
   CertificateHistoryResponse,
   CertificateSearchResponse,
   CollectionProgress,
+  LoginResponse,
   MetricsResponse,
   SearchResponse,
   TaskProgress,
 } from './types'
 
+const authTokenKey = 'seo_monitor_auth_token'
+
+export function hasAuthToken() {
+  return Boolean(localStorage.getItem(authTokenKey))
+}
+
+export function setAuthToken(token: string) {
+  localStorage.setItem(authTokenKey, token)
+}
+
+export function clearAuthToken() {
+  localStorage.removeItem(authTokenKey)
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers)
   if (init?.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+
+  const token = localStorage.getItem(authTokenKey)
+  if (token && path !== '/api/v1/auth/login' && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`)
+  }
 
   const response = await fetch(path, { ...init, headers })
   if (!response.ok) {
@@ -20,10 +41,30 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // Keep the HTTP status as fallback for non-JSON proxy errors.
     }
-    throw new Error(detail.error || detail.message || `${response.status} ${response.statusText}`)
+    const message = detail.error || detail.message || `${response.status} ${response.statusText}`
+    if (response.status === 401 && path !== '/api/v1/auth/login') {
+      clearAuthToken()
+      window.dispatchEvent(new CustomEvent('auth:unauthorized', { detail: message }))
+    }
+    throw new Error(message)
   }
   if (response.status === 204) return undefined as T
   return (await response.json()) as T
+}
+
+export function login(username: string, password: string) {
+  return request<LoginResponse>('/api/v1/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  })
+}
+
+export function getCurrentUser() {
+  return request<{ user: AuthUser }>('/api/v1/auth/me')
+}
+
+export function logout() {
+  return request<void>('/api/v1/auth/logout', { method: 'POST' })
 }
 
 export function searchLatest(field: string, query: string, page: number, limit: number, status = '') {

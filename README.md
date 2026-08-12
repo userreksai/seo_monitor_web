@@ -10,8 +10,8 @@
 - 添加/归档域名，手动采集单域名或全部域名。
 - 查看最近 90 天流量、权重、反向链接趋势。
 - 从页眉进入独立的证书信息页，查看证书到期时间、剩余天数、状态和最近检测时间，并可手动触发全量检测。
-- 服务端代理后端 API，后端 Token 不会发送到浏览器。
-- HTTP Basic 登录可通过 `WEB_AUTH_ENABLED` 开关控制，目前默认关闭。
+- 使用后端 MongoDB 账号登录，默认账号密码为 `admin / admin1818`。
+- 登录成功后使用短期会话令牌访问 API，退出或过期后自动返回登录页。
 
 ## 服务器一键部署（Debian/Ubuntu）
 
@@ -27,13 +27,12 @@ sudo sh /tmp/install-seo-monitor-web.sh
 
 1. 安装 Git、Node.js 22、pnpm 11 等依赖；检测到 Node.js 20 时自动升级。
 2. 拉取或快进更新 `/usr/local/seo_monitor_web`。
-3. 从 `/usr/local/seo_monitor/.env` 读取 `API_TOKEN`。
-4. 生成备用管理用户名和随机密码，登录功能默认关闭。
-5. 安装依赖、构建 Vue 静态文件。
-6. 安装并启动 `seo-monitor-web.service`。
-7. 检查 `http://127.0.0.1:8889/frontend-health`。
+3. 生成前端代理配置，浏览器登录令牌会安全转发给 Go 后端验证。
+4. 安装依赖、构建 Vue 静态文件。
+5. 安装并启动 `seo-monitor-web.service`。
+6. 检查 `http://127.0.0.1:8889/frontend-health`。
 
-部署完成后脚本会输出访问地址。服务器安全组/防火墙需要放行 TCP `8889`；登录关闭时建议仅允许可信IP访问。
+部署完成后脚本会输出访问地址和默认账号。服务器安全组/防火墙需要放行 TCP `8889`。
 
 ## 常用命令
 
@@ -55,13 +54,9 @@ sudo systemctl restart seo-monitor-web
 HOST=0.0.0.0
 PORT=8889
 BACKEND_API_URL=http://127.0.0.1:10001
-BACKEND_API_TOKEN=与后端API_TOKEN一致
-WEB_AUTH_ENABLED=false
-WEB_USERNAME=admin
-WEB_PASSWORD=强密码
 ```
 
-需要恢复登录时，将 `WEB_AUTH_ENABLED=true`，然后重启 `seo-monitor-web`。
+账号、密码、会话时长由后端 `/usr/local/seo_monitor/.env` 中的 `DEFAULT_ADMIN_USERNAME`、`DEFAULT_ADMIN_PASSWORD`、`AUTH_SESSION_TTL` 控制。默认管理员只在账号不存在时创建，重复启动或更新不会重置已有密码。
 
 ## 本地开发
 
@@ -69,12 +64,10 @@ Node.js 22+：
 
 ```sh
 pnpm install
-VITE_BACKEND_API_URL=http://127.0.0.1:10001 \
-VITE_BACKEND_API_TOKEN=后端API_TOKEN \
-pnpm run dev
+VITE_BACKEND_API_URL=http://127.0.0.1:10001 pnpm run dev
 ```
 
-开发服务器为 `http://127.0.0.1:8889`。生产环境使用 `server.mjs`，不要把 `VITE_BACKEND_API_TOKEN` 编译进前端。
+开发服务器为 `http://127.0.0.1:8889`。生产环境使用 `server.mjs` 转发 API，静态 API Token 不会编译进前端。
 
 ## 更新部署
 

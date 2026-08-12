@@ -10,9 +10,6 @@ export default defineConfig({
       '/api': {
         target: process.env.VITE_BACKEND_API_URL || 'http://127.0.0.1:10001',
         changeOrigin: true,
-        headers: process.env.VITE_BACKEND_API_TOKEN
-          ? { Authorization: `Bearer ${process.env.VITE_BACKEND_API_TOKEN}` }
-          : undefined,
       },
     },
   },

@@ -10,22 +10,10 @@ loadEnvironment(join(root, '.env'))
 const host = process.env.HOST || '0.0.0.0'
 const port = parsePort(process.env.PORT || '8889')
 const backend = new URL(process.env.BACKEND_API_URL || 'http://127.0.0.1:10001')
-const backendToken = process.env.BACKEND_API_TOKEN || ''
-const webAuthEnabled = /^(1|true|yes|on)$/i.test(process.env.WEB_AUTH_ENABLED || '')
-const webUsername = process.env.WEB_USERNAME || ''
-const webPassword = process.env.WEB_PASSWORD || ''
 const dist = resolve(root, 'dist')
 
 if (!existsSync(join(dist, 'index.html'))) {
   console.error('dist/index.html 不存在，请先执行 npm run build')
-  process.exit(1)
-}
-if (!backendToken) {
-  console.error('BACKEND_API_TOKEN 未配置，拒绝启动不完整的 API 代理')
-  process.exit(1)
-}
-if (webAuthEnabled && (!webUsername || !webPassword)) {
-  console.error('WEB_USERNAME/WEB_PASSWORD 未配置，拒绝将管理页面无保护地暴露到网络')
   process.exit(1)
 }
 
@@ -57,10 +45,6 @@ const server = createServer((request, response) => {
   if (url.pathname === '/frontend-health') {
     return sendJSON(response, 200, { status: 'ok', port, backend: backend.origin })
   }
-  if (webAuthEnabled && !authorized(request.headers.authorization)) {
-    response.setHeader('WWW-Authenticate', 'Basic realm="SEO Monitor", charset="UTF-8"')
-    return sendJSON(response, 401, { error: '需要登录' })
-  }
   if (url.pathname === '/healthz' || url.pathname.startsWith('/api/')) {
     return proxyRequest(request, response)
   }
@@ -74,24 +58,12 @@ server.on('clientError', (_error, socket) => socket.end('HTTP/1.1 400 Bad Reques
 server.listen(port, host, () => {
   console.log(`SEO Monitor Web listening on http://${host}:${port}`)
   console.log(`API proxy target: ${backend.origin}`)
-  console.log(`Web authentication: ${webAuthEnabled ? 'enabled' : 'disabled'}`)
 })
-
-function authorized(header = '') {
-  if (!header.startsWith('Basic ')) return false
-  try {
-    const value = Buffer.from(header.slice(6), 'base64').toString('utf8')
-    const separator = value.indexOf(':')
-    return separator >= 0 && value.slice(0, separator) === webUsername && value.slice(separator + 1) === webPassword
-  } catch {
-    return false
-  }
-}
 
 function proxyRequest(incoming, outgoing) {
   const target = new URL(incoming.url || '/', backend)
   const requestImpl = target.protocol === 'https:' ? httpsRequest : httpRequest
-  const headers = { ...incoming.headers, host: target.host, authorization: `Bearer ${backendToken}` }
+  const headers = { ...incoming.headers, host: target.host }
   delete headers['content-length']
   delete headers['proxy-authorization']
 

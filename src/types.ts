@@ -146,3 +146,15 @@ export interface ApiError {
   error?: string
   message?: string
 }
+
+export interface AuthUser {
+  id: string
+  username: string
+  role: string
+}
+
+export interface LoginResponse {
+  token: string
+  expires_at: string
+  user: AuthUser
+}
