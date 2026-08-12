@@ -114,6 +114,7 @@ const trend = reactive({
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit.value)))
 const refreshing = computed(() => loading.value || summaryLoading.value)
+const isReadonly = computed(() => auth.user?.role === 'readonly')
 const collectionBusy = computed(() => busyId.value === 'all' || collectionProgress.in_progress)
 const collectionProgressPercent = computed(() => {
   if (!collectionProgress.total) return 0
@@ -505,20 +506,20 @@ onUnmounted(() => {
         </div>
       </div>
       <div v-if="currentView === 'dashboard'" class="header-actions">
-        <span class="session-user">{{ auth.user.username }}</span>
+        <span class="session-user">{{ auth.user.username }} · {{ isReadonly ? '只读' : '管理员' }}</span>
         <button class="button secondary" @click="navigate('/certificates')">证书信息</button>
         <button class="button secondary" :disabled="refreshing" @click="refresh">刷新数据</button>
-        <button class="button secondary" :disabled="collectionBusy" @click="queueAll">
+        <button v-if="!isReadonly" class="button secondary" :disabled="collectionBusy" @click="queueAll">
           {{ collectionProgress.in_progress ? `采集中 ${collectionProgressPercent}%` : busyId === 'all' ? '正在排队…' : '采集全部' }}
         </button>
-        <button class="button primary" @click="addDialog.open = true">添加域名</button>
-		<button class="button secondary" @click="openPasswordDialog">修改密码</button>
+        <button v-if="!isReadonly" class="button primary" @click="addDialog.open = true">添加域名</button>
+		<button v-if="!isReadonly" class="button secondary" @click="openPasswordDialog">修改密码</button>
         <button class="button secondary logout-button" @click="signOut">退出</button>
       </div>
       <div v-else class="header-actions">
-        <span class="session-user">{{ auth.user.username }}</span>
+        <span class="session-user">{{ auth.user.username }} · {{ isReadonly ? '只读' : '管理员' }}</span>
         <button class="button secondary" @click="navigate('/')">返回域名监控</button>
-		<button class="button secondary" @click="openPasswordDialog">修改密码</button>
+		<button v-if="!isReadonly" class="button secondary" @click="openPasswordDialog">修改密码</button>
         <button class="button secondary logout-button" @click="signOut">退出</button>
       </div>
     </header>
@@ -641,8 +642,8 @@ onUnmounted(() => {
                 <td class="detail-cell"><strong>{{ item.metric?.domain_age_text || (item.metric?.domain_age_days ? `${item.metric.domain_age_days} 天` : '—') }}</strong><span>到期：{{ dateText(item.metric?.expires_on) }}</span></td>
                 <td class="actions-column"><div class="row-actions">
                   <button title="查看 90 天趋势" @click="openTrend(item)">趋势</button>
-                  <button :disabled="busyId === item.domain.id" @click="queueOne(item)">采集</button>
-                  <button class="danger-link" :disabled="busyId === item.domain.id" @click="remove(item)">归档</button>
+                  <button v-if="!isReadonly" :disabled="busyId === item.domain.id" @click="queueOne(item)">采集</button>
+                  <button v-if="!isReadonly" class="danger-link" :disabled="busyId === item.domain.id" @click="remove(item)">归档</button>
                 </div></td>
               </tr>
             </tbody>
@@ -656,9 +657,9 @@ onUnmounted(() => {
       </section>
     </main>
 
-    <CertificatePage v-else />
+    <CertificatePage v-else :read-only="isReadonly" />
 
-    <div v-if="addDialog.open" class="modal-backdrop" @click.self="addDialog.open = false">
+    <div v-if="!isReadonly && addDialog.open" class="modal-backdrop" @click.self="addDialog.open = false">
       <section class="modal small-modal" role="dialog" aria-modal="true" aria-labelledby="add-title">
         <div class="modal-heading"><div><h2 id="add-title">添加监控域名</h2><p>添加后可立即手动采集</p></div><button class="close-button" @click="addDialog.open = false">×</button></div>
         <form class="modal-form" @submit.prevent="saveDomain">
@@ -687,7 +688,7 @@ onUnmounted(() => {
       </section>
     </div>
 
-	<div v-if="passwordDialog.open" class="modal-backdrop" @click.self="passwordDialog.open = false">
+	<div v-if="!isReadonly && passwordDialog.open" class="modal-backdrop" @click.self="passwordDialog.open = false">
 		<section class="modal small-modal" role="dialog" aria-modal="true" aria-labelledby="password-title">
 			<div class="modal-heading"><div><h2 id="password-title">修改登录密码</h2><p>修改后会注销该账号的所有现有会话</p></div><button class="close-button" @click="passwordDialog.open = false">×</button></div>
 			<form class="modal-form" @submit.prevent="savePassword">

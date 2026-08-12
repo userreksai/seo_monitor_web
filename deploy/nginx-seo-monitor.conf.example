@@ -1,9 +1,29 @@
 # Install this file under /etc/nginx/conf.d/ (or inside the nginx http block).
 # Replace monitor.example.com and both certificate paths before running nginx -t.
 
+# conf.d files are loaded inside nginx's http block, so this also hides the
+# version on redirects, errors, and the default virtual hosts below.
+server_tokens off;
+
 limit_req_zone  $binary_remote_addr  zone=seo_monitor_login:10m  rate=5r/m;
 limit_req_zone  $binary_remote_addr  zone=seo_monitor_api:10m    rate=30r/s;
 limit_conn_zone $binary_remote_addr  zone=seo_monitor_conn:10m;
+
+# Refuse requests sent to the server IP or an unknown Host instead of exposing
+# the distribution's default welcome site.
+server {
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
+    return 444;
+}
+
+server {
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    server_name _;
+    ssl_reject_handshake on;
+}
 
 server {
     listen 80;
@@ -26,7 +46,6 @@ server {
     ssl_session_timeout 1d;
     ssl_session_tickets off;
 
-    server_tokens off;
     client_max_body_size 1m;
     client_body_timeout 10s;
     client_header_timeout 10s;

@@ -3,6 +3,8 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { getCertificateHistory, getCertificateProgress, listCertificates, refreshCertificates } from './api'
 import type { CertificateInfo, CertificateSummary, LatestCertificate, TaskProgress } from './types'
 
+const props = defineProps<{ readOnly?: boolean }>()
+
 type CertificateStatusFilter = '' | 'checked' | 'expiring' | 'expired' | 'failed'
 
 const items = ref<LatestCertificate[]>([])
@@ -327,7 +329,7 @@ onUnmounted(() => window.clearTimeout(progressPollTimer))
       </div>
       <div class="toolbar-actions">
         <button class="button ghost" :disabled="loading" @click="load">刷新数据</button>
-        <button class="button primary" :disabled="refreshBusy" @click="startRefresh">
+        <button v-if="!props.readOnly" class="button primary" :disabled="refreshBusy" @click="startRefresh">
           {{ progress.running ? `检测中 ${progressPercent}%` : refreshing ? '正在提交…' : '检测全部证书' }}
         </button>
       </div>
