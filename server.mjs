@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 const root = fileURLToPath(new URL('.', import.meta.url))
 loadEnvironment(join(root, '.env'))
 
-const host = process.env.HOST || '0.0.0.0'
+const host = process.env.HOST || '127.0.0.1'
 const port = parsePort(process.env.PORT || '8889')
 const backend = new URL(process.env.BACKEND_API_URL || 'http://127.0.0.1:10001')
 const dist = resolve(root, 'dist')
@@ -38,12 +38,20 @@ const mimeTypes = {
 const server = createServer((request, response) => {
   response.setHeader('X-Content-Type-Options', 'nosniff')
   response.setHeader('X-Frame-Options', 'DENY')
-  response.setHeader('Referrer-Policy', 'same-origin')
-  response.setHeader('Content-Security-Policy', "default-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'")
+	response.setHeader('X-XSS-Protection', '0')
+	response.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
+	response.setHeader('Cross-Origin-Opener-Policy', 'same-origin')
+	response.setHeader('Cross-Origin-Resource-Policy', 'same-origin')
+	response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()')
+	response.setHeader('X-Robots-Tag', 'noindex, nofollow, noarchive')
+	response.setHeader(
+		'Content-Security-Policy',
+		"default-src 'self'; base-uri 'none'; object-src 'none'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'",
+	)
 
   const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`)
   if (url.pathname === '/frontend-health') {
-    return sendJSON(response, 200, { status: 'ok', port, backend: backend.origin })
+		return sendJSON(response, 200, { status: 'ok' })
   }
   if (url.pathname === '/healthz' || url.pathname.startsWith('/api/')) {
     return proxyRequest(request, response)
@@ -55,17 +63,26 @@ const server = createServer((request, response) => {
 })
 
 server.on('clientError', (_error, socket) => socket.end('HTTP/1.1 400 Bad Request\r\n\r\n'))
+server.headersTimeout = 10_000
+server.requestTimeout = 35_000
+server.keepAliveTimeout = 10_000
+server.maxRequestsPerSocket = 1_000
 server.listen(port, host, () => {
   console.log(`SEO Monitor Web listening on http://${host}:${port}`)
   console.log(`API proxy target: ${backend.origin}`)
 })
 
 function proxyRequest(incoming, outgoing) {
-  const target = new URL(incoming.url || '/', backend)
+	const incomingURL = new URL(incoming.url || '/', 'http://local.invalid')
+	const target = new URL(backend)
+	target.pathname = incomingURL.pathname
+	target.search = incomingURL.search
   const requestImpl = target.protocol === 'https:' ? httpsRequest : httpRequest
   const headers = { ...incoming.headers, host: target.host }
-  delete headers['content-length']
   delete headers['proxy-authorization']
+	delete headers['proxy-connection']
+	delete headers['forwarded']
+	delete headers['x-forwarded-host']
 
   const proxied = requestImpl(target, { method: incoming.method, headers }, (backendResponse) => {
     outgoing.writeHead(backendResponse.statusCode || 502, backendResponse.headers)

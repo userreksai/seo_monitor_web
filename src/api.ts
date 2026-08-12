@@ -10,30 +10,13 @@ import type {
   TaskProgress,
 } from './types'
 
-const authTokenKey = 'seo_monitor_auth_token'
-
-export function hasAuthToken() {
-  return Boolean(localStorage.getItem(authTokenKey))
-}
-
-export function setAuthToken(token: string) {
-  localStorage.setItem(authTokenKey, token)
-}
-
-export function clearAuthToken() {
-  localStorage.removeItem(authTokenKey)
-}
-
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers)
   if (init?.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json')
+	const method = (init?.method || 'GET').toUpperCase()
+	if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) headers.set('X-CSRF-Protection', '1')
 
-  const token = localStorage.getItem(authTokenKey)
-  if (token && path !== '/api/v1/auth/login' && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${token}`)
-  }
-
-  const response = await fetch(path, { ...init, headers })
+	const response = await fetch(path, { ...init, headers, credentials: 'same-origin' })
   if (!response.ok) {
     let detail: ApiError = {}
     try {
@@ -43,7 +26,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     const message = detail.error || detail.message || `${response.status} ${response.statusText}`
     if (response.status === 401 && path !== '/api/v1/auth/login') {
-      clearAuthToken()
       window.dispatchEvent(new CustomEvent('auth:unauthorized', { detail: message }))
     }
     throw new Error(message)
@@ -65,6 +47,13 @@ export function getCurrentUser() {
 
 export function logout() {
   return request<void>('/api/v1/auth/logout', { method: 'POST' })
+}
+
+export function changePassword(currentPassword: string, newPassword: string) {
+	return request<void>('/api/v1/auth/password', {
+		method: 'POST',
+		body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+	})
 }
 
 export function searchLatest(field: string, query: string, page: number, limit: number, status = '') {
