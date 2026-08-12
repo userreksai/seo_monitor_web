@@ -2,7 +2,6 @@
 set -eu
 
 APP_DIR=/usr/local/seo_monitor_web
-BACKEND_DIR=/usr/local/seo_monitor
 REPOSITORY=https://github.com/userreksai/seo_monitor_web.git
 SERVICE=seo-monitor-web
 SERVICE_USER=seo-monitor-web
@@ -17,7 +16,7 @@ command -v apt-get >/dev/null 2>&1 || fail "this installer currently supports De
 log "Installing system dependencies"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y ca-certificates curl git openssl
+apt-get install -y ca-certificates curl git
 
 NODE_MAJOR=0
 if command -v node >/dev/null 2>&1; then
@@ -80,24 +79,11 @@ if ! id "$SERVICE_USER" >/dev/null 2>&1; then
 fi
 
 if [ ! -f "$APP_DIR/.env" ]; then
-  BACKEND_TOKEN=
-  if [ -f "$BACKEND_DIR/.env" ]; then
-    BACKEND_TOKEN=$(sed -n 's/^API_TOKEN=//p' "$BACKEND_DIR/.env" | tail -n 1)
-  fi
-  [ -n "$BACKEND_TOKEN" ] || fail "cannot read API_TOKEN from $BACKEND_DIR/.env; create $APP_DIR/.env from .env.example first"
-  WEB_PASSWORD=$(openssl rand -hex 12)
   {
     printf 'HOST=0.0.0.0\n'
     printf 'PORT=8889\n'
     printf 'BACKEND_API_URL=http://127.0.0.1:10001\n'
-    printf 'BACKEND_API_TOKEN=%s\n' "$BACKEND_TOKEN"
-    printf 'WEB_AUTH_ENABLED=false\n'
-    printf 'WEB_USERNAME=admin\n'
-    printf 'WEB_PASSWORD=%s\n' "$WEB_PASSWORD"
   } > "$APP_DIR/.env"
-  GENERATED_LOGIN=1
-else
-  GENERATED_LOGIN=0
 fi
 
 chown root:"$SERVICE_USER" "$APP_DIR/.env"
@@ -133,7 +119,6 @@ fi
 SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 printf '\nInstallation complete.\n'
 printf 'URL: http://%s:8889\n' "${SERVER_IP:-SERVER_IP}"
-printf 'Authentication: disabled (WEB_AUTH_ENABLED defaults to false).\n'
-printf 'Set WEB_AUTH_ENABLED=true in %s/.env and restart to enable login.\n' "$APP_DIR"
+printf 'Login: admin / admin1818 (managed by the backend database).\n'
 printf 'Service: systemctl status %s\n' "$SERVICE"
 printf 'Logs: journalctl -u %s -f\n' "$SERVICE"

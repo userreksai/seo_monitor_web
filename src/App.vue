@@ -2,15 +2,22 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import {
   archiveDomain,
+  clearAuthToken,
   collectAll,
   collectDomain,
   createDomain,
   getCollectionProgress,
+  getCurrentUser,
   getMetrics,
+  hasAuthToken,
+  login,
+  logout,
   searchLatest,
+  setAuthToken,
 } from './api'
-import type { CollectionProgress, LatestMetric, Metric } from './types'
+import type { AuthUser, CollectionProgress, LatestMetric, Metric } from './types'
 import CertificatePage from './CertificatePage.vue'
+import LoginPage from './LoginPage.vue'
 
 const currentView = ref<'dashboard' | 'certificates'>(
   window.location.pathname === '/certificates' ? 'certificates' : 'dashboard',
@@ -80,6 +87,7 @@ const collectionProgress = reactive<CollectionProgress>({
   failed: 0,
   canceled: 0,
 })
+const auth = reactive({ ready: false, loading: false, error: '', user: null as AuthUser | null })
 
 const addDialog = reactive({ open: false, domain: '', displayName: '', saving: false })
 const trend = reactive({
@@ -332,7 +340,7 @@ function metricValue(metric: Metric | undefined, field: TrendField) {
 
 function syncView() {
   currentView.value = window.location.pathname === '/certificates' ? 'certificates' : 'dashboard'
-  if (currentView.value === 'dashboard') {
+  if (auth.user && currentView.value === 'dashboard') {
     if (!items.value.length) void refresh()
     void pollCollectionProgress()
   }
@@ -343,21 +351,83 @@ function navigate(path: '/' | '/certificates') {
   syncView()
 }
 
-onMounted(() => {
-  window.addEventListener('popstate', syncView)
+async function loadAuthenticatedView() {
   if (currentView.value === 'dashboard') {
-    void refresh()
+    await refresh()
     void pollCollectionProgress()
   }
+}
+
+async function initializeAuth() {
+  if (!hasAuthToken()) {
+    auth.ready = true
+    return
+  }
+  try {
+    const result = await getCurrentUser()
+    auth.user = result.user
+    await loadAuthenticatedView()
+  } catch {
+    clearAuthToken()
+  } finally {
+    auth.ready = true
+  }
+}
+
+async function signIn(payload: { username: string; password: string }) {
+  auth.loading = true
+  auth.error = ''
+  try {
+    const result = await login(payload.username, payload.password)
+    setAuthToken(result.token)
+    auth.user = result.user
+    await loadAuthenticatedView()
+  } catch (error) {
+    auth.error = messageOf(error)
+  } finally {
+    auth.loading = false
+  }
+}
+
+async function signOut() {
+  try {
+    await logout()
+  } catch {
+    // The local session is cleared even if it already expired on the server.
+  } finally {
+    clearAuthToken()
+    auth.user = null
+    auth.error = ''
+    items.value = []
+    total.value = 0
+    window.clearTimeout(collectionPollTimer)
+  }
+}
+
+function handleUnauthorized(event: Event) {
+  const detail = event instanceof CustomEvent ? String(event.detail || '') : ''
+  auth.user = null
+  auth.error = detail || '登录已失效，请重新登录'
+  addDialog.open = false
+  trend.open = false
+}
+
+onMounted(() => {
+  window.addEventListener('popstate', syncView)
+  window.addEventListener('auth:unauthorized', handleUnauthorized)
+  void initializeAuth()
 })
 onUnmounted(() => {
   window.removeEventListener('popstate', syncView)
+  window.removeEventListener('auth:unauthorized', handleUnauthorized)
   window.clearTimeout(collectionPollTimer)
 })
 </script>
 
 <template>
-  <div class="app-shell">
+  <div v-if="!auth.ready" class="auth-loading-screen"><span class="spinner"></span>正在验证登录状态…</div>
+  <LoginPage v-else-if="!auth.user" :loading="auth.loading" :error="auth.error" @submit="signIn" />
+  <div v-else class="app-shell">
     <header class="topbar">
       <div class="brand">
         <div class="brand-mark">S</div>
@@ -367,15 +437,19 @@ onUnmounted(() => {
         </div>
       </div>
       <div v-if="currentView === 'dashboard'" class="header-actions">
+        <span class="session-user">{{ auth.user.username }}</span>
         <button class="button secondary" @click="navigate('/certificates')">证书信息</button>
         <button class="button secondary" :disabled="refreshing" @click="refresh">刷新数据</button>
         <button class="button secondary" :disabled="collectionBusy" @click="queueAll">
           {{ collectionProgress.in_progress ? `采集中 ${collectionProgressPercent}%` : busyId === 'all' ? '正在排队…' : '采集全部' }}
         </button>
         <button class="button primary" @click="addDialog.open = true">添加域名</button>
+        <button class="button secondary logout-button" @click="signOut">退出</button>
       </div>
       <div v-else class="header-actions">
+        <span class="session-user">{{ auth.user.username }}</span>
         <button class="button secondary" @click="navigate('/')">返回域名监控</button>
+        <button class="button secondary logout-button" @click="signOut">退出</button>
       </div>
     </header>
 
