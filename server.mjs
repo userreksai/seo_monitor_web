@@ -49,7 +49,12 @@ const server = createServer((request, response) => {
 		"default-src 'self'; base-uri 'none'; object-src 'none'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'",
 	)
 
-  const url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`)
+  let url
+  try {
+    url = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`)
+  } catch {
+    return sendJSON(response, 400, { error: 'invalid request target' })
+  }
   if (url.pathname === '/frontend-health') {
 		return sendJSON(response, 200, { status: 'ok' })
   }
@@ -90,7 +95,8 @@ function proxyRequest(incoming, outgoing) {
   })
   proxied.setTimeout(30_000, () => proxied.destroy(new Error('backend timeout')))
   proxied.on('error', (error) => {
-    if (!outgoing.headersSent) sendJSON(outgoing, 502, { error: `后端服务不可用：${error.message}` })
+    console.error('Backend proxy request failed:', error.message)
+    if (!outgoing.headersSent) sendJSON(outgoing, 502, { error: '后端服务暂不可用' })
     else outgoing.destroy(error)
   })
   incoming.pipe(proxied)
@@ -104,11 +110,17 @@ function serveStatic(pathname, headOnly, response) {
     return sendJSON(response, 400, { error: 'invalid path' })
   }
   const relative = normalize(decoded).replace(/^([/\\])+/, '')
+  if (relative.split(/[/\\]/).some((part) => part.startsWith('.'))) {
+    return sendJSON(response, 404, { error: 'not found' })
+  }
   let file = resolve(dist, relative)
   if (!file.startsWith(`${dist}\\`) && !file.startsWith(`${dist}/`) && file !== dist) {
     return sendJSON(response, 403, { error: 'forbidden' })
   }
-  if (!existsSync(file) || !statSync(file).isFile()) file = join(dist, 'index.html')
+  if (!existsSync(file) || !statSync(file).isFile()) {
+    if (extname(relative)) return sendJSON(response, 404, { error: 'not found' })
+    file = join(dist, 'index.html')
+  }
 
   const extension = extname(file).toLowerCase()
   response.statusCode = 200

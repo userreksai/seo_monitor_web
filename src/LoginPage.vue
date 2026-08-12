@@ -4,7 +4,7 @@ import { ref } from 'vue'
 defineProps<{ loading: boolean; error: string }>()
 const emit = defineEmits<{ submit: [payload: { username: string; password: string }] }>()
 
-const username = ref('admin')
+const username = ref('')
 const password = ref('')
 
 function submit() {
@@ -27,7 +27,7 @@ function submit() {
       <div class="login-heading">
         <span class="login-eyebrow">管理后台</span>
         <h2>登录您的账号</h2>
-        <p>请输入管理员账号与密码继续访问。</p>
+        <p>请输入账号与密码继续访问。</p>
       </div>
 
       <form class="login-form" @submit.prevent="submit">
