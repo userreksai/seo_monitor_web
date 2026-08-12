@@ -80,10 +80,23 @@ fi
 
 if [ ! -f "$APP_DIR/.env" ]; then
   {
-    printf 'HOST=0.0.0.0\n'
+    printf 'HOST=127.0.0.1\n'
     printf 'PORT=8889\n'
     printf 'BACKEND_API_URL=http://127.0.0.1:10001\n'
   } > "$APP_DIR/.env"
+else
+	ENV_TEMP=$(mktemp "$APP_DIR/.env.XXXXXX")
+	awk '
+		BEGIN { host_seen = 0 }
+		/^HOST=/ {
+			if (!host_seen) print "HOST=127.0.0.1"
+			host_seen = 1
+			next
+		}
+		{ print }
+		END { if (!host_seen) print "HOST=127.0.0.1" }
+	' "$APP_DIR/.env" > "$ENV_TEMP"
+	mv "$ENV_TEMP" "$APP_DIR/.env"
 fi
 
 chown root:"$SERVICE_USER" "$APP_DIR/.env"
@@ -116,9 +129,9 @@ if [ "$HEALTHY" -ne 1 ]; then
   fail "frontend health check failed"
 fi
 
-SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 printf '\nInstallation complete.\n'
-printf 'URL: http://%s:8889\n' "${SERVER_IP:-SERVER_IP}"
-printf 'Login: admin / admin1818 (managed by the backend database).\n'
+printf 'Loopback upstream: http://127.0.0.1:8889\n'
+printf 'Public access: configure Nginx TLS using deploy/nginx-seo-monitor.conf.example.\n'
+printf 'Login: managed by the backend database.\n'
 printf 'Service: systemctl status %s\n' "$SERVICE"
 printf 'Logs: journalctl -u %s -f\n' "$SERVICE"

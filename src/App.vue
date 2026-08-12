@@ -2,18 +2,16 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import {
   archiveDomain,
-  clearAuthToken,
+	changePassword,
   collectAll,
   collectDomain,
   createDomain,
   getCollectionProgress,
   getCurrentUser,
   getMetrics,
-  hasAuthToken,
   login,
   logout,
   searchLatest,
-  setAuthToken,
 } from './api'
 import type { AuthUser, CollectionProgress, LatestMetric, Metric } from './types'
 import CertificatePage from './CertificatePage.vue'
@@ -90,6 +88,7 @@ const collectionProgress = reactive<CollectionProgress>({
 const auth = reactive({ ready: false, loading: false, error: '', user: null as AuthUser | null })
 
 const addDialog = reactive({ open: false, domain: '', displayName: '', saving: false })
+const passwordDialog = reactive({ open: false, current: '', next: '', confirm: '', saving: false, error: '' })
 const trend = reactive({
   open: false,
   loading: false,
@@ -359,16 +358,13 @@ async function loadAuthenticatedView() {
 }
 
 async function initializeAuth() {
-  if (!hasAuthToken()) {
-    auth.ready = true
-    return
-  }
   try {
     const result = await getCurrentUser()
     auth.user = result.user
     await loadAuthenticatedView()
   } catch {
-    clearAuthToken()
+	// No valid HttpOnly session cookie; show the login page.
+	auth.error = ''
   } finally {
     auth.ready = true
   }
@@ -379,7 +375,6 @@ async function signIn(payload: { username: string; password: string }) {
   auth.error = ''
   try {
     const result = await login(payload.username, payload.password)
-    setAuthToken(result.token)
     auth.user = result.user
     await loadAuthenticatedView()
   } catch (error) {
@@ -395,13 +390,39 @@ async function signOut() {
   } catch {
     // The local session is cleared even if it already expired on the server.
   } finally {
-    clearAuthToken()
     auth.user = null
     auth.error = ''
     items.value = []
     total.value = 0
     window.clearTimeout(collectionPollTimer)
   }
+}
+
+function openPasswordDialog() {
+	passwordDialog.current = ''
+	passwordDialog.next = ''
+	passwordDialog.confirm = ''
+	passwordDialog.error = ''
+	passwordDialog.open = true
+}
+
+async function savePassword() {
+	passwordDialog.error = ''
+	if (passwordDialog.next !== passwordDialog.confirm) {
+		passwordDialog.error = '两次输入的新密码不一致'
+		return
+	}
+	passwordDialog.saving = true
+	try {
+		await changePassword(passwordDialog.current, passwordDialog.next)
+		passwordDialog.open = false
+		auth.user = null
+		auth.error = '密码已修改，所有会话均已注销，请使用新密码登录'
+	} catch (error) {
+		passwordDialog.error = messageOf(error)
+	} finally {
+		passwordDialog.saving = false
+	}
 }
 
 function handleUnauthorized(event: Event) {
@@ -444,11 +465,13 @@ onUnmounted(() => {
           {{ collectionProgress.in_progress ? `采集中 ${collectionProgressPercent}%` : busyId === 'all' ? '正在排队…' : '采集全部' }}
         </button>
         <button class="button primary" @click="addDialog.open = true">添加域名</button>
+		<button class="button secondary" @click="openPasswordDialog">修改密码</button>
         <button class="button secondary logout-button" @click="signOut">退出</button>
       </div>
       <div v-else class="header-actions">
         <span class="session-user">{{ auth.user.username }}</span>
         <button class="button secondary" @click="navigate('/')">返回域名监控</button>
+		<button class="button secondary" @click="openPasswordDialog">修改密码</button>
         <button class="button secondary logout-button" @click="signOut">退出</button>
       </div>
     </header>
@@ -600,6 +623,19 @@ onUnmounted(() => {
         </div>
       </section>
     </div>
+
+	<div v-if="passwordDialog.open" class="modal-backdrop" @click.self="passwordDialog.open = false">
+		<section class="modal small-modal" role="dialog" aria-modal="true" aria-labelledby="password-title">
+			<div class="modal-heading"><div><h2 id="password-title">修改登录密码</h2><p>修改后会注销该账号的所有现有会话</p></div><button class="close-button" @click="passwordDialog.open = false">×</button></div>
+			<form class="modal-form" @submit.prevent="savePassword">
+				<label><span>当前密码</span><input v-model="passwordDialog.current" type="password" autocomplete="current-password" required maxlength="72" /></label>
+				<label><span>新密码</span><input v-model="passwordDialog.next" type="password" autocomplete="new-password" required minlength="12" maxlength="72" /></label>
+				<label><span>确认新密码</span><input v-model="passwordDialog.confirm" type="password" autocomplete="new-password" required minlength="12" maxlength="72" /></label>
+				<p v-if="passwordDialog.error" class="login-error" role="alert">{{ passwordDialog.error }}</p>
+				<div class="modal-actions"><button class="button ghost" type="button" @click="passwordDialog.open = false">取消</button><button class="button primary" :disabled="passwordDialog.saving">{{ passwordDialog.saving ? '修改中…' : '修改并注销' }}</button></div>
+			</form>
+		</section>
+	</div>
 
     <Transition name="toast"><div v-if="notice.text" class="toast" :class="{ error: notice.error }">{{ notice.text }}</div></Transition>
   </div>
