@@ -70,6 +70,7 @@ const weightFields = [
 const items = ref<LatestMetric[]>([])
 const loading = ref(false)
 const summaryLoading = ref(false)
+const exporting = ref(false)
 const total = ref(0)
 const collectedTotal = ref<number>()
 const freshTodayTotal = ref<number>()
@@ -114,6 +115,7 @@ const trend = reactive({
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit.value)))
 const refreshing = computed(() => loading.value || summaryLoading.value)
+const exportBusy = computed(() => loading.value || exporting.value)
 const isReadonly = computed(() => auth.user?.role === 'readonly')
 const collectionBusy = computed(() => busyId.value === 'all' || collectionProgress.in_progress)
 const collectionProgressPercent = computed(() => {
@@ -255,6 +257,103 @@ function changePage(next: number) {
   void load()
 }
 
+async function exportWeights() {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    const exportField = appliedField.value
+    const exportQuery = appliedQuery.value
+    const exportStatus = failedOnly.value ? 'failed' : ''
+    const exportSortField = sortField.value
+    const exportSortOrder = exportSortField ? sortOrder.value : ''
+    const exportItems: LatestMetric[] = []
+    let exportPage = 1
+    let exportTotal = 0
+
+    do {
+      const result = await searchLatest(
+        exportField,
+        exportQuery,
+        exportPage,
+        100,
+        exportStatus,
+        exportSortField,
+        exportSortOrder,
+      )
+      const resultItems = result.items || []
+      exportItems.push(...resultItems)
+      exportTotal = result.total
+      exportPage += 1
+      if (!resultItems.length) break
+    } while (exportItems.length < exportTotal)
+
+    if (!exportItems.length) {
+      showNotice('没有可导出的权重数据')
+      return
+    }
+
+    const rows = exportItems.map((item) => [
+      item.domain.domain,
+      item.domain.display_name || '',
+      dateText(item.metric?.snapshot_date),
+      exportMetricValue(item.metric?.baidu_pc_weight),
+      exportMetricValue(item.metric?.baidu_mobile_weight),
+      exportMetricValue(item.metric?.sogou_weight),
+      exportMetricValue(item.metric?.bing_weight),
+      exportMetricValue(item.metric?.so_360_weight),
+      exportMetricValue(item.metric?.shenma_weight),
+      exportMetricValue(item.metric?.pr_weight),
+      totalWeight(item.metric),
+    ])
+    const headers = [
+      '域名',
+      '显示名称',
+      '快照日期',
+      '百度 PC 权重',
+      '百度移动权重',
+      '搜狗权重',
+      '必应权重',
+      '360 权重',
+      '神马权重',
+      'PR 权重',
+      '权重总计',
+    ]
+    const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n')
+    const scope = exportQuery || exportStatus ? '当前筛选' : '全部'
+    downloadCsv(`域名权重-${scope}-${localDateStamp()}.csv`, csv)
+    showNotice(`已导出 ${exportItems.length} 条权重数据（包含总计）`)
+  } catch (error) {
+    showNotice(`导出失败：${messageOf(error)}`, true)
+  } finally {
+    exporting.value = false
+  }
+}
+
+function csvCell(value: unknown) {
+  let text = value === undefined || value === null ? '' : String(value)
+  if (/^[=+\-@]/.test(text)) text = `'${text}`
+  return `"${text.replace(/"/g, '""')}"`
+}
+
+function downloadCsv(filename: string, csv: string) {
+  const url = URL.createObjectURL(new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' }))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+
+function localDateStamp() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}${month}${day}`
+}
+
 async function saveDomain() {
   if (!addDialog.domain.trim()) return
   addDialog.saving = true
@@ -378,11 +477,14 @@ function metricValue(metric: Metric | undefined, field: TrendField) {
 }
 
 function totalWeight(metric?: Metric) {
-  if (!metric) return undefined
-  const values = weightFields
-    .map((field) => metric[field])
-    .filter((value): value is number => typeof value === 'number')
-  return values.length ? values.reduce((sum, value) => sum + value, 0) : undefined
+  return weightFields.reduce((sum, field) => {
+    const value = metric?.[field]
+    return sum + (typeof value === 'number' ? value : 0)
+  }, 0)
+}
+
+function exportMetricValue(value?: number) {
+  return typeof value === 'number' ? value : '—'
 }
 
 function syncView() {
@@ -581,11 +683,16 @@ onUnmounted(() => {
       <section class="panel table-panel">
         <div class="table-heading">
           <div><h2>最新域名数据</h2><p>每个域名展示最近一次采集快照</p></div>
-          <label class="page-size">每页
-            <select v-model.number="limit" @change="page = 1; load()">
-              <option :value="10">10</option><option :value="20">20</option><option :value="50">50</option><option :value="100">100</option>
-            </select>
-          </label>
+          <div class="table-heading-actions">
+            <button class="button ghost export-button" type="button" :disabled="exportBusy || total === 0" @click="exportWeights">
+              {{ exporting ? '正在导出…' : appliedQuery || failedOnly ? '导出当前筛选权重' : '导出全部权重' }}
+            </button>
+            <label class="page-size">每页
+              <select v-model.number="limit" @change="page = 1; load()">
+                <option :value="10">10</option><option :value="20">20</option><option :value="50">50</option><option :value="100">100</option>
+              </select>
+            </label>
+          </div>
         </div>
 
         <div class="table-wrap">

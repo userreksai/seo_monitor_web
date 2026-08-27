@@ -83,6 +83,8 @@ input:focus, select:focus { border-color: #6b9cff; box-shadow: 0 0 0 3px rgba(37
 .table-heading { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 19px 20px; border-bottom: 1px solid var(--border); }
 .table-heading h2, .modal-heading h2 { margin: 0; font-size: 16px; }
 .table-heading p, .modal-heading p { margin: 4px 0 0; color: var(--muted); font-size: 12px; }
+.table-heading-actions { display: flex; align-items: center; gap: 12px; }
+.export-button { min-width: 118px; }
 .page-size { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; white-space: nowrap; }
 .page-size select { width: 75px; height: 34px; }
 .table-wrap { width: 100%; overflow: auto; }
@@ -178,8 +180,9 @@ main.login-shell { position: relative; width: 100%; min-height: 100vh; margin: 0
   .query-field { grid-column: 1 / -1; grid-row: 2; }
   .search-button { grid-row: 3; }
   .search-form .ghost { grid-column: 2; grid-row: 3; }
-  .table-heading { align-items: flex-end; }
+  .table-heading { align-items: flex-start; flex-direction: column; }
   .table-heading p { display: none; }
+  .table-heading-actions { width: 100%; justify-content: space-between; }
   .modal-backdrop { padding: 12px; }.modal { padding: 18px; }
   .login-card { padding: 26px 22px; }
 }
