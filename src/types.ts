@@ -101,6 +101,63 @@ export interface CertificateSummary {
   failed: number
 }
 
+export interface DomainTitleInfo {
+	id?: string
+	domain_id: string
+	domain: string
+	title?: string
+	final_url?: string
+	status_code?: number
+	content_type?: string
+	check_source?: string
+	checked_at?: string
+	last_attempt_at: string
+	changed_at?: string
+	change_count: number
+	error_message?: string
+	created_at: string
+	updated_at: string
+}
+
+export interface LatestDomainTitle {
+	domain: Domain
+	title?: DomainTitleInfo
+}
+
+export interface DomainTitleChange {
+	id?: string
+	domain_id: string
+	domain: string
+	old_title: string
+	new_title: string
+	final_url?: string
+	check_source?: string
+	changed_at: string
+}
+
+export interface TitleSummary {
+	total: number
+	checked: number
+	changed: number
+	failed: number
+}
+
+export interface TitleSearchResponse {
+	items: LatestDomainTitle[]
+	count: number
+	total: number
+	page: number
+	limit: number
+	q: string
+	status: string
+	summary: TitleSummary
+}
+
+export interface TitleHistoryResponse {
+	items: DomainTitleChange[]
+	count: number
+}
+
 export interface SearchResponse {
   items: LatestMetric[]
   count: number

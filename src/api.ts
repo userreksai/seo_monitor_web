@@ -8,6 +8,8 @@ import type {
   MetricsResponse,
   SearchResponse,
   TaskProgress,
+	TitleHistoryResponse,
+	TitleSearchResponse,
 } from './types'
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -124,4 +126,23 @@ export function getCertificateProgress() {
 
 export function getCertificateHistory(id: string) {
   return request<CertificateHistoryResponse>(`/api/v1/certificates/${id}/history`)
+}
+
+export function listTitles(query: string, status: string, page: number, limit: number) {
+	const params = new URLSearchParams({ q: query, status, page: String(page), limit: String(limit) })
+	return request<TitleSearchResponse>(`/api/v1/titles?${params}`)
+}
+
+export function refreshTitles() {
+	return request<{ started: boolean; message: string; progress: TaskProgress }>('/api/v1/titles/refresh', {
+		method: 'POST',
+	})
+}
+
+export function getTitleProgress() {
+	return request<TaskProgress>('/api/v1/titles/progress')
+}
+
+export function getTitleHistory(id: string) {
+	return request<TitleHistoryResponse>(`/api/v1/titles/${id}/history`)
 }

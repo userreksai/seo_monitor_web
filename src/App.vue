@@ -16,10 +16,17 @@ import {
 import type { AuthUser, CollectionProgress, LatestMetric, Metric } from './types'
 import CertificatePage from './CertificatePage.vue'
 import LoginPage from './LoginPage.vue'
+import TitlePage from './TitlePage.vue'
 
-const currentView = ref<'dashboard' | 'certificates'>(
-  window.location.pathname === '/certificates' ? 'certificates' : 'dashboard',
-)
+type View = 'dashboard' | 'certificates' | 'titles'
+
+function viewFromPath(): View {
+	if (window.location.pathname === '/certificates') return 'certificates'
+	if (window.location.pathname === '/titles') return 'titles'
+	return 'dashboard'
+}
+
+const currentView = ref<View>(viewFromPath())
 
 const fields = [
   { value: 'domain', label: '域名' },
@@ -488,14 +495,14 @@ function exportMetricValue(value?: number) {
 }
 
 function syncView() {
-  currentView.value = window.location.pathname === '/certificates' ? 'certificates' : 'dashboard'
+  currentView.value = viewFromPath()
   if (auth.user && currentView.value === 'dashboard') {
     if (!items.value.length) void refresh()
     void pollCollectionProgress()
   }
 }
 
-function navigate(path: '/' | '/certificates') {
+function navigate(path: '/' | '/certificates' | '/titles') {
   if (window.location.pathname !== path) window.history.pushState({}, '', path)
   syncView()
 }
@@ -609,6 +616,7 @@ onUnmounted(() => {
       </div>
       <div v-if="currentView === 'dashboard'" class="header-actions">
         <span class="session-user">{{ auth.user.username }} · {{ isReadonly ? '只读' : '管理员' }}</span>
+        <button class="button secondary" @click="navigate('/titles')">标题监控</button>
         <button class="button secondary" @click="navigate('/certificates')">证书信息</button>
         <button class="button secondary" :disabled="refreshing" @click="refresh">刷新数据</button>
         <button v-if="!isReadonly" class="button secondary" :disabled="collectionBusy" @click="queueAll">
@@ -620,6 +628,8 @@ onUnmounted(() => {
       </div>
       <div v-else class="header-actions">
         <span class="session-user">{{ auth.user.username }} · {{ isReadonly ? '只读' : '管理员' }}</span>
+        <button v-if="currentView !== 'titles'" class="button secondary" @click="navigate('/titles')">标题监控</button>
+        <button v-if="currentView !== 'certificates'" class="button secondary" @click="navigate('/certificates')">证书信息</button>
         <button class="button secondary" @click="navigate('/')">返回域名监控</button>
 		<button v-if="!isReadonly" class="button secondary" @click="openPasswordDialog">修改密码</button>
         <button class="button secondary logout-button" @click="signOut">退出</button>
@@ -764,7 +774,8 @@ onUnmounted(() => {
       </section>
     </main>
 
-    <CertificatePage v-else :read-only="isReadonly" />
+    <CertificatePage v-else-if="currentView === 'certificates'" :read-only="isReadonly" />
+    <TitlePage v-else :read-only="isReadonly" />
 
     <div v-if="!isReadonly && addDialog.open" class="modal-backdrop" @click.self="addDialog.open = false">
       <section class="modal small-modal" role="dialog" aria-modal="true" aria-labelledby="add-title">
