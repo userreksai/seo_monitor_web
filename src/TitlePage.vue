@@ -10,6 +10,7 @@ const props = withDefaults(defineProps<{ readOnly?: boolean }>(), { readOnly: fa
 const items = ref<LatestDomainTitle[]>([])
 const loading = ref(false)
 const refreshing = ref(false)
+const exporting = ref(false)
 const total = ref(0)
 const page = ref(1)
 const limit = ref(20)
@@ -25,6 +26,7 @@ const history = reactive({ open: false, loading: false, domain: '', items: [] as
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit.value)))
 const refreshBusy = computed(() => refreshing.value || progress.running)
+const exportBusy = computed(() => loading.value || exporting.value)
 const progressPercent = computed(() => progress.total ? Math.min(100, Math.round(progress.completed / progress.total * 100)) : 0)
 const statusFilterLabel = computed(() => {
 	if (statusFilter.value === 'checked') return '已获取标题'
@@ -85,6 +87,91 @@ function changePage(next: number) {
 	if (next < 1 || next > totalPages.value || next === page.value) return
 	page.value = next
 	void load()
+}
+
+async function exportTitles() {
+	if (exporting.value) return
+	exporting.value = true
+	try {
+		const exportQuery = appliedQuery.value
+		const exportStatus = statusFilter.value
+		const exportItems: LatestDomainTitle[] = []
+		let exportPage = 1
+		let exportTotal = 0
+
+		do {
+			const result = await listTitles(exportQuery, exportStatus, exportPage, 100)
+			const resultItems = result.items || []
+			exportItems.push(...resultItems)
+			exportTotal = result.total
+			if (!resultItems.length) break
+			exportPage += 1
+		} while (exportItems.length < exportTotal)
+
+		const rows = exportItems.map((item) => {
+			const title = item.title
+			return [
+				item.domain.domain,
+				item.domain.display_name || '',
+				title?.title || '',
+				statusOf(item).label,
+				title?.final_url || '',
+				title?.status_code || '',
+				exportDateText(title?.checked_at),
+				exportDateText(title?.last_attempt_at),
+				exportDateText(title?.changed_at),
+				title?.change_count || 0,
+				title?.check_source || '',
+				title?.content_type || '',
+				title?.error_message || '',
+			]
+		})
+		const headers = [
+			'域名', '显示名称', '当前标题', '状态', '最终 URL', 'HTTP 状态码', '最近成功检测时间',
+			'最近尝试时间', '最近变更时间', '变更次数', '检测来源', '内容类型', '错误信息',
+		]
+		const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n')
+		downloadCsv(`域名标题-${exportFileLabel(exportQuery, exportStatus)}-${localDateStamp()}.csv`, csv)
+		showNotice(`已导出 ${exportItems.length} 条标题数据`)
+	} catch (error) {
+		showNotice(`导出失败：${messageOf(error)}`, true)
+	} finally {
+		exporting.value = false
+	}
+}
+
+function csvCell(value: unknown) {
+	let text = value === undefined || value === null ? '' : String(value)
+	if (/^[=+\-@]/.test(text)) text = `'${text}`
+	return `"${text.replace(/"/g, '""')}"`
+}
+
+function downloadCsv(filename: string, csv: string) {
+	const url = URL.createObjectURL(new Blob(['\ufeff', csv], { type: 'text/csv;charset=utf-8' }))
+	const link = document.createElement('a')
+	link.href = url
+	link.download = filename
+	document.body.appendChild(link)
+	link.click()
+	link.remove()
+	URL.revokeObjectURL(url)
+}
+
+function exportFileLabel(query: string, status: TitleStatusFilter) {
+	if (query && status) return '当前筛选'
+	if (query) return '搜索结果'
+	if (status === 'checked') return '已获取标题'
+	if (status === 'changed') return '标题变更'
+	if (status === 'failed') return '检测失败'
+	return '全部'
+}
+
+function localDateStamp() {
+	const now = new Date()
+	const year = now.getFullYear()
+	const month = String(now.getMonth() + 1).padStart(2, '0')
+	const day = String(now.getDate()).padStart(2, '0')
+	return `${year}${month}${day}`
 }
 
 async function startRefresh() {
@@ -155,6 +242,10 @@ function dateText(value?: string) {
 	}).format(date)
 }
 
+function exportDateText(value?: string) {
+	return value ? dateText(value) : ''
+}
+
 function messageOf(error: unknown) {
 	return error instanceof Error ? error.message : '请求失败，请稍后重试'
 }
@@ -200,7 +291,15 @@ onUnmounted(() => {
 		</section>
 
 		<section class="panel table-panel">
-			<div class="table-heading"><div><h2>域名标题列表</h2><p>当前标题每次检测都会更新；只有标题内容变化时才新增变更记录</p></div><label class="page-size">每页<select v-model.number="limit" @change="page = 1; load()"><option :value="10">10</option><option :value="20">20</option><option :value="50">50</option><option :value="100">100</option></select></label></div>
+			<div class="table-heading">
+				<div><h2>域名标题列表</h2><p>当前标题每次检测都会更新；只有标题内容变化时才新增变更记录</p></div>
+				<div class="table-heading-actions">
+					<button class="button ghost export-button" type="button" :disabled="exportBusy || total === 0" @click="exportTitles">
+						{{ exporting ? '正在导出…' : appliedQuery || statusFilter ? '导出当前筛选' : '导出全部数据' }}
+					</button>
+					<label class="page-size">每页<select v-model.number="limit" @change="page = 1; load()"><option :value="10">10</option><option :value="20">20</option><option :value="50">50</option><option :value="100">100</option></select></label>
+				</div>
+			</div>
 			<div class="table-wrap">
 				<table class="title-table">
 					<thead><tr><th>域名</th><th>当前标题</th><th>状态</th><th>检测时间</th><th>变更次数</th><th>检测来源</th><th>操作</th></tr></thead>
