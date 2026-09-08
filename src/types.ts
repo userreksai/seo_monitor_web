@@ -2,6 +2,7 @@ export interface Domain {
   id: string
   domain: string
   display_name?: string
+  tag: string
   active: boolean
   created_at: string
   updated_at: string

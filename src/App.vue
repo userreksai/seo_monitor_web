@@ -12,6 +12,7 @@ import {
   login,
   logout,
   searchLatest,
+  updateDomainTag,
 } from './api'
 import type { AuthUser, CollectionProgress, LatestMetric, Metric } from './types'
 import CertificatePage from './CertificatePage.vue'
@@ -31,6 +32,7 @@ const currentView = ref<View>(viewFromPath())
 const fields = [
   { value: 'domain', label: '域名' },
   { value: 'display_name', label: '显示名称' },
+  { value: 'tag', label: '标签' },
   { value: 'site_category', label: '网站分类' },
   { value: 'registrant_name', label: '注册人/机构' },
   { value: 'registrant_email', label: '注册人邮箱' },
@@ -109,7 +111,8 @@ const collectionProgress = reactive<CollectionProgress>({
 })
 const auth = reactive({ ready: false, loading: false, error: '', user: null as AuthUser | null })
 
-const addDialog = reactive({ open: false, domain: '', displayName: '', saving: false })
+const addDialog = reactive({ open: false, domain: '', displayName: '', tag: '', saving: false })
+const tagDialog = reactive({ open: false, domainId: '', domain: '', tag: '', saving: false })
 const passwordDialog = reactive({ open: false, current: '', next: '', confirm: '', saving: false, error: '' })
 const trend = reactive({
   open: false,
@@ -302,6 +305,7 @@ async function exportWeights() {
     const rows = exportItems.map((item) => [
       item.domain.domain,
       item.domain.display_name || '',
+      item.domain.tag || '',
       dateText(item.metric?.snapshot_date),
       exportMetricValue(item.metric?.baidu_pc_weight),
       exportMetricValue(item.metric?.baidu_mobile_weight),
@@ -315,6 +319,7 @@ async function exportWeights() {
     const headers = [
       '域名',
       '显示名称',
+      '标签',
       '快照日期',
       '百度 PC 权重',
       '百度移动权重',
@@ -365,16 +370,38 @@ async function saveDomain() {
   if (!addDialog.domain.trim()) return
   addDialog.saving = true
   try {
-    await createDomain(addDialog.domain, addDialog.displayName)
+    await createDomain(addDialog.domain, addDialog.displayName, addDialog.tag)
     showNotice(`已添加 ${addDialog.domain.trim()}`)
     addDialog.open = false
     addDialog.domain = ''
     addDialog.displayName = ''
+    addDialog.tag = ''
     await resetSearch()
   } catch (error) {
     showNotice(messageOf(error), true)
   } finally {
     addDialog.saving = false
+  }
+}
+
+function openTagDialog(item: LatestMetric) {
+  tagDialog.domainId = item.domain.id
+  tagDialog.domain = item.domain.domain
+  tagDialog.tag = item.domain.tag || ''
+  tagDialog.open = true
+}
+
+async function saveTag() {
+  tagDialog.saving = true
+  try {
+    await updateDomainTag(tagDialog.domainId, tagDialog.tag)
+    showNotice(tagDialog.tag.trim() ? `${tagDialog.domain} 标签已保存` : `${tagDialog.domain} 标签已删除`)
+    tagDialog.open = false
+    await load()
+  } catch (error) {
+    showNotice(messageOf(error), true)
+  } finally {
+    tagDialog.saving = false
   }
 }
 
@@ -587,6 +614,7 @@ function handleUnauthorized(event: Event) {
   auth.user = null
   auth.error = detail || '登录已失效，请重新登录'
   addDialog.open = false
+  tagDialog.open = false
   trend.open = false
 }
 
@@ -735,6 +763,8 @@ onUnmounted(() => {
                 <td class="sticky-column domain-cell">
                   <strong>{{ item.domain.domain }}</strong>
                   <span>{{ item.domain.display_name || '未设置显示名称' }}</span>
+                  <span v-if="item.domain.tag" class="domain-tag">{{ item.domain.tag }}</span>
+                  <span v-else class="domain-tag empty-tag">未设置标签</span>
                   <small>{{ item.metric ? dateText(item.metric.snapshot_date) : '尚未采集' }}</small>
                   <small v-if="item.collection?.status === 'failed'" class="collection-error" :title="item.collection.error_message">
                     采集失败：{{ item.collection.error_message || '未知错误' }}
@@ -759,6 +789,7 @@ onUnmounted(() => {
                 <td class="detail-cell"><strong>{{ item.metric?.domain_age_text || (item.metric?.domain_age_days ? `${item.metric.domain_age_days} 天` : '—') }}</strong><span>到期：{{ dateText(item.metric?.expires_on) }}</span></td>
                 <td class="actions-column"><div class="row-actions">
                   <button title="查看 90 天趋势" @click="openTrend(item)">趋势</button>
+                  <button v-if="!isReadonly" :disabled="busyId === item.domain.id" @click="openTagDialog(item)">标签</button>
                   <button v-if="!isReadonly" :disabled="busyId === item.domain.id" @click="queueOne(item)">采集</button>
                   <button v-if="!isReadonly" class="danger-link" :disabled="busyId === item.domain.id" @click="remove(item)">归档</button>
                 </div></td>
@@ -783,7 +814,18 @@ onUnmounted(() => {
         <form class="modal-form" @submit.prevent="saveDomain">
           <label><span>域名</span><input v-model="addDialog.domain" required placeholder="example.com" autocomplete="off" /></label>
           <label><span>显示名称（可选）</span><input v-model="addDialog.displayName" placeholder="我的网站" /></label>
+          <label><span>标签（可选）</span><input v-model="addDialog.tag" maxlength="50" placeholder="例如：重点站点" /></label>
           <div class="modal-actions"><button class="button ghost" type="button" @click="addDialog.open = false">取消</button><button class="button primary" :disabled="addDialog.saving">{{ addDialog.saving ? '保存中…' : '保存域名' }}</button></div>
+        </form>
+      </section>
+    </div>
+
+    <div v-if="!isReadonly && tagDialog.open" class="modal-backdrop" @click.self="tagDialog.open = false">
+      <section class="modal small-modal" role="dialog" aria-modal="true" aria-labelledby="tag-title">
+        <div class="modal-heading"><div><h2 id="tag-title">编辑域名标签</h2><p>{{ tagDialog.domain }}；清空后保存即删除标签</p></div><button class="close-button" @click="tagDialog.open = false">×</button></div>
+        <form class="modal-form" @submit.prevent="saveTag">
+          <label><span>标签</span><input v-model="tagDialog.tag" maxlength="50" placeholder="例如：重点站点" autofocus /></label>
+          <div class="modal-actions"><button class="button ghost" type="button" @click="tagDialog.open = false">取消</button><button class="button primary" :disabled="tagDialog.saving">{{ tagDialog.saving ? '保存中…' : '保存标签' }}</button></div>
         </form>
       </section>
     </div>

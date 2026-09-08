@@ -137,6 +137,7 @@ async function exportCertificates() {
       return [
         item.domain.domain,
         item.domain.display_name || '',
+        item.domain.tag || '',
         dateText(certificate?.expires_at),
         remainingText(certificate?.expires_at),
         statusOf(item).label,
@@ -149,7 +150,7 @@ async function exportCertificates() {
         certificate?.error_message || '',
       ]
     })
-    const headers = ['域名', '显示名称', '证书到期时间', '剩余时间', '状态', '颁发机构', '证书生效时间', '最近检测时间', '域名匹配', '检测来源', '解析地址', '错误信息']
+    const headers = ['域名', '显示名称', '标签', '证书到期时间', '剩余时间', '状态', '颁发机构', '证书生效时间', '最近检测时间', '域名匹配', '检测来源', '解析地址', '错误信息']
     const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n')
     downloadCsv(`证书-${exportFileLabel(exportStatus)}-${localDateStamp()}.csv`, csv)
     showNotice(`已导出 ${exportItems.length} 条证书数据`)
@@ -351,7 +352,7 @@ onUnmounted(() => window.clearTimeout(progressPollTimer))
     <section class="panel search-panel">
       <form class="certificate-search" @submit.prevent="search">
         <label>
-          <span>域名或显示名称</span>
+          <span>域名、显示名称或标签</span>
           <input v-model="query" type="search" placeholder="输入域名关键词" />
         </label>
         <button class="button primary" type="submit">搜索</button>
@@ -390,6 +391,7 @@ onUnmounted(() => window.clearTimeout(progressPollTimer))
               <td class="certificate-domain">
                 <strong>{{ item.domain.domain }}</strong>
                 <span>{{ item.domain.display_name || '未设置显示名称' }}</span>
+                <span>标签：{{ item.domain.tag || '未设置' }}</span>
               </td>
               <td><strong>{{ dateText(item.certificate?.expires_at) }}</strong><small v-if="item.certificate?.valid_from">生效：{{ dateText(item.certificate.valid_from) }}</small></td>
               <td><strong>{{ remainingText(item.certificate?.expires_at) }}</strong></td>

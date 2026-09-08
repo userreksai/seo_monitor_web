@@ -102,6 +102,8 @@ tbody tr:hover .sticky-column { background: #fbfcfe; }
 .domain-cell strong, .detail-cell strong { display: block; color: #172033; }
 .domain-cell span, .detail-cell span, .cell-sub { display: block; max-width: 210px; margin-top: 5px; color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .domain-cell small { display: block; margin-top: 7px; color: #8590a1; font-size: 10px; }
+.domain-cell .domain-tag { display: inline-block; max-width: 190px; margin-top: 7px; padding: 3px 7px; color: #1d4ed8; background: #eaf1ff; border-radius: 999px; font-size: 10px; font-weight: 700; }
+.domain-cell .empty-tag { color: #7b8493; background: #f0f2f5; font-weight: 600; }
 .domain-cell .collection-error { max-width: 210px; color: #b42318; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .traffic { font-size: 14px; color: #0f766e; }
 .weights { display: flex; flex-wrap: wrap; width: 280px; gap: 5px; }
