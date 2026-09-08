@@ -113,6 +113,7 @@ async function exportTitles() {
 			return [
 				item.domain.domain,
 				item.domain.display_name || '',
+				item.domain.tag || '',
 				title?.title || '',
 				statusOf(item).label,
 				title?.final_url || '',
@@ -127,7 +128,7 @@ async function exportTitles() {
 			]
 		})
 		const headers = [
-			'域名', '显示名称', '当前标题', '状态', '最终 URL', 'HTTP 状态码', '最近成功检测时间',
+			'域名', '显示名称', '标签', '当前标题', '状态', '最终 URL', 'HTTP 状态码', '最近成功检测时间',
 			'最近尝试时间', '最近变更时间', '变更次数', '检测来源', '内容类型', '错误信息',
 		]
 		const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n')
@@ -284,7 +285,7 @@ onUnmounted(() => {
 
 		<section class="panel search-panel">
 			<form class="title-search" @submit.prevent="search">
-				<label><span>域名、显示名称或标题</span><input v-model="query" type="search" placeholder="输入域名或标题关键词" /></label>
+				<label><span>域名、显示名称、标签或标题</span><input v-model="query" type="search" placeholder="输入域名、标签或标题关键词" /></label>
 				<button class="button primary" type="submit">搜索</button><button class="button ghost" type="button" @click="resetSearch">重置</button>
 			</form>
 			<p v-if="statusFilter" class="filter-tip">当前显示：{{ statusFilterLabel }}，共 {{ total }} 条 <button type="button" @click="toggleStatus(statusFilter as Exclude<TitleStatusFilter, ''>)">清除筛选</button></p>
@@ -307,7 +308,7 @@ onUnmounted(() => {
 						<tr v-if="loading"><td colspan="7"><div class="empty-state"><span class="spinner"></span>正在读取标题信息…</div></td></tr>
 						<tr v-else-if="!items.length"><td colspan="7"><div class="empty-state">没有符合条件的标题信息</div></td></tr>
 						<tr v-for="item in items" v-else :key="item.domain.id">
-							<td class="title-domain"><strong>{{ item.domain.domain }}</strong><span>{{ item.domain.display_name || '未设置显示名称' }}</span></td>
+							<td class="title-domain"><strong>{{ item.domain.domain }}</strong><span>{{ item.domain.display_name || '未设置显示名称' }}</span><span>标签：{{ item.domain.tag || '未设置' }}</span></td>
 							<td class="title-value"><strong :title="item.title?.title">{{ item.title?.title || '—' }}</strong><a v-if="item.title?.final_url" :href="item.title.final_url" target="_blank" rel="noopener noreferrer">{{ item.title.final_url }}</a><small v-if="item.title?.error_message" :title="item.title.error_message">{{ item.title.error_message }}</small></td>
 							<td><span class="status-badge" :class="statusOf(item).className">{{ statusOf(item).label }}</span></td>
 							<td><strong>{{ dateText(item.title?.checked_at) }}</strong><small>尝试：{{ dateText(item.title?.last_attempt_at) }}</small></td>

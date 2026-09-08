@@ -79,10 +79,17 @@ export function searchLatest(
   return request<SearchResponse>(`/api/v1/search?${params}`)
 }
 
-export function createDomain(domain: string, displayName: string) {
+export function createDomain(domain: string, displayName: string, tag: string) {
   return request('/api/v1/domains', {
     method: 'POST',
-    body: JSON.stringify({ domain, display_name: displayName.trim() || null }),
+    body: JSON.stringify({ domain, display_name: displayName.trim() || null, tag: tag.trim() }),
+  })
+}
+
+export function updateDomainTag(id: string, tag: string) {
+  return request(`/api/v1/domains/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ tag: tag.trim() }),
   })
 }
 
