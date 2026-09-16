@@ -86,3 +86,9 @@ VITE_BACKEND_API_URL=http://127.0.0.1:10001 pnpm run dev
 重复执行一键部署命令即可。脚本使用 `git merge --ff-only` 更新源码，保留现有 `.env`，重新构建并重启服务。
 
 本项目不使用 Docker。
+
+## 每日权重来源
+
+列表和趋势历史明细显示爱站/站长之家来源及有效状态，CSV 同时导出。跨来源、无效日期或缺失日期之间不连接趋势线。需要后端返回 weight_source、weight_valid 字段；未升级的后端数据会显示为未确认，不假定来源。
+
+来源逻辑测试：node --experimental-strip-types --test tests/metric-source.test.mjs（Node 22.18+）。
