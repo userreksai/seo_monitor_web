@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { weightSource, weightSourceLabel, weightUsable, weightStatus, canConnectWeights } from './metric-source'
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import {
   archiveDomain,
@@ -138,17 +139,22 @@ const trafficTotal = computed(() =>
 
 const trendPoints = computed(() => {
   const values = trend.items
-    .map((metric, index) => ({ index, value: metric[trend.field] as number | undefined }))
+    .map((metric, index) => ({ index, value: weightUsable(metric) ? metric[trend.field] as number | undefined : undefined }))
     .filter((point): point is { index: number; value: number } => typeof point.value === 'number')
-  if (!values.length) return { points: '', min: 0, max: 0, values: [] as typeof values }
+  if (!values.length) return { segments: [] as string[], min: 0, max: 0, values: [] as typeof values }
   const min = Math.min(...values.map((point) => point.value))
   const max = Math.max(...values.map((point) => point.value))
   const span = max - min || 1
   const divisor = Math.max(trend.items.length - 1, 1)
-  const points = values
-    .map((point) => `${40 + (point.index / divisor) * 700},${225 - ((point.value - min) / span) * 170}`)
-    .join(' ')
-  return { points, min, max, values }
+  const coordinate = (point: { index: number; value: number }) => `${40 + (point.index / divisor) * 700},${225 - ((point.value - min) / span) * 170}`
+  const segments: string[] = []
+  values.forEach((point, index) => {
+    const previous = values[index - 1]
+    if (previous && point.index === previous.index + 1 && canConnectWeights(trend.items[previous.index], trend.items[point.index])) {
+      segments.push(`${coordinate(previous)} ${coordinate(point)}`)
+    }
+  })
+  return { segments, min, max, values }
 })
 
 let noticeTimer = 0
@@ -307,6 +313,8 @@ async function exportWeights() {
       item.domain.display_name || '',
       item.domain.tag || '',
       dateText(item.metric?.snapshot_date),
+      weightSourceLabel(item.metric),
+      weightStatus(item.metric),
       exportMetricValue(item.metric?.baidu_pc_weight),
       exportMetricValue(item.metric?.baidu_mobile_weight),
       exportMetricValue(item.metric?.sogou_weight),
@@ -321,6 +329,8 @@ async function exportWeights() {
       '显示名称',
       '标签',
       '快照日期',
+      '权重来源',
+      '权重状态',
       '百度 PC 权重',
       '百度移动权重',
       '搜狗权重',
@@ -766,6 +776,8 @@ onUnmounted(() => {
                   <span v-if="item.domain.tag" class="domain-tag">{{ item.domain.tag }}</span>
                   <span v-else class="domain-tag empty-tag">未设置标签</span>
                   <small>{{ item.metric ? dateText(item.metric.snapshot_date) : '尚未采集' }}</small>
+                  <span class="weight-source" :class="weightSource(item.metric)" :title="`${item.metric ? dateText(item.metric.snapshot_date) : '暂无快照'} · 权重来源：${weightSourceLabel(item.metric)}`">权重：{{ weightSourceLabel(item.metric) }}</span>
+                  <small v-if="!weightUsable(item.metric)" class="weight-validity">{{ weightStatus(item.metric) }}</small>
                   <small v-if="item.collection?.status === 'failed'" class="collection-error" :title="item.collection.error_message">
                     采集失败：{{ item.collection.error_message || '未知错误' }}
                   </small>
@@ -839,11 +851,22 @@ onUnmounted(() => {
         <div v-else class="chart-wrap">
           <svg viewBox="0 0 780 270" role="img" :aria-label="`${trend.domain} ${trend.field} 趋势图`">
             <line x1="40" y1="55" x2="740" y2="55" class="grid-line"/><line x1="40" y1="140" x2="740" y2="140" class="grid-line"/><line x1="40" y1="225" x2="740" y2="225" class="grid-line"/>
-            <polyline :points="trendPoints.points" class="trend-line"/>
-            <circle v-for="point in trendPoints.values" :key="point.index" :cx="40 + (point.index / Math.max(trend.items.length - 1, 1)) * 700" :cy="225 - ((point.value - trendPoints.min) / (trendPoints.max - trendPoints.min || 1)) * 170" r="4" class="trend-dot"><title>{{ dateText(trend.items[point.index]?.snapshot_date) }}：{{ numberText(point.value) }}</title></circle>
+            <polyline v-for="(segment, index) in trendPoints.segments" :key="index" :points="segment" class="trend-line"/>
+            <circle v-for="point in trendPoints.values" :key="point.index" :cx="40 + (point.index / Math.max(trend.items.length - 1, 1)) * 700" :cy="225 - ((point.value - trendPoints.min) / (trendPoints.max - trendPoints.min || 1)) * 170" r="4" class="trend-dot" :class="weightSource(trend.items[point.index])"><title>{{ dateText(trend.items[point.index]?.snapshot_date) }} · {{ weightSourceLabel(trend.items[point.index]) }}：{{ numberText(point.value) }}</title></circle>
             <text x="34" y="59" text-anchor="end">{{ numberText(trendPoints.max) }}</text><text x="34" y="229" text-anchor="end">{{ numberText(trendPoints.min) }}</text>
             <text x="40" y="254">{{ dateText(trend.items[0]?.snapshot_date) }}</text><text x="740" y="254" text-anchor="end">{{ dateText(trend.items[trend.items.length - 1]?.snapshot_date) }}</text>
           </svg>
+        </div>
+        <div v-if="!trend.loading && trend.items.length" class="weight-history">
+          <p>权重来源：<span class="weight-source aizhan">爱站</span> <span class="weight-source chinaz">站长之家</span>。仅相邻两天、同来源的有效数据参与变化比较；跨来源不连线。</p>
+          <div class="weight-history-scroll">
+            <table aria-label="每日权重与来源"><thead><tr><th>快照日期</th><th>权重来源</th><th>百度 PC</th><th>百度移动</th><th>状态</th></tr></thead>
+              <tbody><tr v-for="metric in [...trend.items].reverse()" :key="metric.snapshot_date">
+                <td>{{ dateText(metric.snapshot_date) }}</td><td><span class="weight-source" :class="weightSource(metric)">{{ weightSourceLabel(metric) }}</span></td>
+                <td>{{ numberText(metric.baidu_pc_weight) }}</td><td>{{ numberText(metric.baidu_mobile_weight) }}</td><td>{{ weightStatus(metric) }}</td>
+              </tr></tbody>
+            </table>
+          </div>
         </div>
       </section>
     </div>

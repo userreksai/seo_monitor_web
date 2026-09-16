@@ -9,6 +9,8 @@ export interface Domain {
 }
 
 export interface Metric {
+  weight_source?: 'aizhan' | 'chinaz'
+  weight_valid?: boolean
   id?: string
   domain_id: string
   domain: string

@@ -188,3 +188,16 @@ main.login-shell { position: relative; width: 100%; min-height: 100vh; margin: 0
   .modal-backdrop { padding: 12px; }.modal { padding: 18px; }
   .login-card { padding: 26px 22px; }
 }
+/* Source belongs to each daily snapshot, not the current provider setting. */
+.weight-source { display: inline-flex; align-items: center; width: fit-content; padding: 2px 7px; border-radius: 5px; font-size: 11px; line-height: 1.6; white-space: nowrap; }
+.weight-source.aizhan { color: #1e40af; background: #dbeafe; }
+.weight-source.chinaz { color: #9a3412; background: #ffedd5; }
+.weight-source.unknown { color: #475569; background: #e2e8f0; }
+.weight-validity { color: #92400e; max-width: 240px; white-space: normal; }
+.weight-history > p { font-size: 12px; line-height: 1.9; color: #64748b; }
+.weight-history-scroll { max-height: 270px; overflow: auto; border: 1px solid #e2e8f0; border-radius: 8px; }
+.weight-history table { min-width: 550px; width: 100%; font-size: 12px; }
+.weight-history th, .weight-history td { padding: 9px 12px; text-align: left; white-space: nowrap; }
+.weight-history th { position: sticky; top: 0; background: #f8fafc; }
+.trend-dot.chinaz { fill: #ea580c; }
+.trend-dot.aizhan { fill: #2563eb; }
