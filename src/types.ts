@@ -8,8 +8,18 @@ export interface Domain {
   updated_at: string
 }
 
+export type WeightSource = 'aizhan' | 'chinaz'
+
+export interface WeightSnapshot {
+  metric?: Metric
+  valid: boolean
+  last_attempt_at: string
+  error_message?: string
+}
+
 export interface Metric {
-  weight_source?: 'aizhan' | 'chinaz'
+  weight_source?: WeightSource
+  weight_snapshots?: Partial<Record<WeightSource, WeightSnapshot>>
   weight_valid?: boolean
   id?: string
   domain_id: string
@@ -185,6 +195,8 @@ export interface TaskProgress {
 }
 
 export interface CollectionProgress {
+  sources?: Partial<Record<WeightSource, CollectionProgress>>
+  supplement?: CollectionProgress
   snapshot_date: string
   in_progress: boolean
   total: number

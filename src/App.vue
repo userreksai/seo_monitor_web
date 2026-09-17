@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { weightSource, weightSourceLabel, weightUsable, weightStatus, canConnectWeights } from './metric-source'
+import { weightSource, weightSourceLabel, weightUsable, weightStatus, progressPercent } from './metric-source'
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import {
   archiveDomain,
@@ -19,6 +19,8 @@ import type { AuthUser, CollectionProgress, LatestMetric, Metric } from './types
 import CertificatePage from './CertificatePage.vue'
 import LoginPage from './LoginPage.vue'
 import TitlePage from './TitlePage.vue'
+import SourceProgress from './SourceProgress.vue'
+import SourceTrends from './SourceTrends.vue'
 
 type View = 'dashboard' | 'certificates' | 'titles'
 
@@ -98,6 +100,7 @@ const sortOrder = ref<SortOrder>('asc')
 const notice = reactive({ text: '', error: false })
 const busyId = ref('')
 const showCollectionProgress = ref(false)
+const collectionProgressError = ref('')
 const collectionProgress = reactive<CollectionProgress>({
   snapshot_date: '',
   in_progress: false,
@@ -122,6 +125,8 @@ const trend = reactive({
   domain: '',
   field: 'traffic_max' as TrendField,
   items: [] as Metric[],
+  from: '',
+  to: '',
 })
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit.value)))
@@ -129,33 +134,12 @@ const refreshing = computed(() => loading.value || summaryLoading.value)
 const exportBusy = computed(() => loading.value || exporting.value)
 const isReadonly = computed(() => auth.user?.role === 'readonly')
 const collectionBusy = computed(() => busyId.value === 'all' || collectionProgress.in_progress)
-const collectionProgressPercent = computed(() => {
-  if (!collectionProgress.total) return 0
-  return Math.min(100, Math.round((collectionProgress.completed / collectionProgress.total) * 100))
-})
+const collectionProgressPercent = computed(() => progressPercent(collectionProgress))
 const trafficTotal = computed(() =>
   items.value.reduce((sum, item) => sum + (item.metric?.traffic_max || 0), 0),
 )
 
-const trendPoints = computed(() => {
-  const values = trend.items
-    .map((metric, index) => ({ index, value: weightUsable(metric) ? metric[trend.field] as number | undefined : undefined }))
-    .filter((point): point is { index: number; value: number } => typeof point.value === 'number')
-  if (!values.length) return { segments: [] as string[], min: 0, max: 0, values: [] as typeof values }
-  const min = Math.min(...values.map((point) => point.value))
-  const max = Math.max(...values.map((point) => point.value))
-  const span = max - min || 1
-  const divisor = Math.max(trend.items.length - 1, 1)
-  const coordinate = (point: { index: number; value: number }) => `${40 + (point.index / divisor) * 700},${225 - ((point.value - min) / span) * 170}`
-  const segments: string[] = []
-  values.forEach((point, index) => {
-    const previous = values[index - 1]
-    if (previous && point.index === previous.index + 1 && canConnectWeights(trend.items[previous.index], trend.items[point.index])) {
-      segments.push(`${coordinate(previous)} ${coordinate(point)}`)
-    }
-  })
-  return { segments, min, max, values }
-})
+const trendFieldLabel = computed(() => trendFields.find(field => field.value === trend.field)?.label || '指标')
 
 let noticeTimer = 0
 function showNotice(text: string, error = false) {
@@ -443,22 +427,29 @@ async function queueAll() {
 }
 
 let collectionPollTimer = 0
+let collectionPollRequest = 0
 async function pollCollectionProgress() {
   window.clearTimeout(collectionPollTimer)
+  if (!auth.user || currentView.value !== 'dashboard') return
+  const requestId = ++collectionPollRequest
   const wasInProgress = collectionProgress.in_progress
   try {
     const result = await getCollectionProgress()
-    Object.assign(collectionProgress, result)
-    if (result.in_progress) {
-      showCollectionProgress.value = true
-      collectionPollTimer = window.setTimeout(pollCollectionProgress, 1500)
-    } else if (wasInProgress) {
-      showCollectionProgress.value = true
-      showNotice(`采集完成：成功 ${result.succeeded}，失败 ${result.failed}`)
+    if (requestId !== collectionPollRequest || !auth.user || currentView.value !== 'dashboard') return
+    // Clear optional source fields too when an older backend omits them.
+    Object.assign(collectionProgress, { sources: undefined, supplement: undefined }, result)
+    collectionProgressError.value = ''
+    showCollectionProgress.value = result.total > 0
+    if (!result.in_progress && wasInProgress) {
+      showNotice(`${result.sources ? '两站' : ''}权重任务已结束：成功 ${result.succeeded}，失败 ${result.failed}`)
       await Promise.all([load(), loadSummary()])
     }
-  } catch (error) {
-    if (wasInProgress || showCollectionProgress.value) {
+    if (requestId === collectionPollRequest && auth.user && currentView.value === 'dashboard') {
+      collectionPollTimer = window.setTimeout(pollCollectionProgress, result.in_progress ? 1500 : 15000)
+    }
+  } catch {
+    if (requestId === collectionPollRequest && auth.user && currentView.value === 'dashboard') {
+      collectionProgressError.value = '采集进度暂时无法更新，正在重试；当前保留上次返回的状态。'
       collectionPollTimer = window.setTimeout(pollCollectionProgress, 3000)
     }
   }
@@ -484,14 +475,21 @@ async function openTrend(item: LatestMetric) {
   trend.domainId = item.domain.id
   trend.domain = item.domain.domain
   trend.items = []
+  trend.from = ''
+  trend.to = ''
+  const requestedDomain = item.domain.id
   try {
     const result = await getMetrics(item.domain.id)
+    if (trend.domainId !== requestedDomain) return
     trend.items = result.items || []
+    trend.from = result.from
+    trend.to = result.to
   } catch (error) {
+    if (trend.domainId !== requestedDomain) return
     showNotice(messageOf(error), true)
     trend.open = false
   } finally {
-    trend.loading = false
+    if (trend.domainId === requestedDomain) trend.loading = false
   }
 }
 
@@ -693,18 +691,8 @@ onUnmounted(() => {
         </article>
       </section>
 
-      <section v-if="showCollectionProgress && collectionProgress.total" class="panel task-progress" aria-live="polite">
-        <div class="task-progress-heading">
-          <div>
-            <strong>{{ collectionProgress.in_progress ? '正在采集全部域名' : '本次采集已完成' }}</strong>
-            <span>{{ collectionProgress.completed }} / {{ collectionProgress.total }}（成功 {{ collectionProgress.succeeded }}，失败 {{ collectionProgress.failed }}）</span>
-          </div>
-          <b>{{ collectionProgressPercent }}%</b>
-        </div>
-        <div class="progress-track" role="progressbar" :aria-valuenow="collectionProgress.completed" aria-valuemin="0" :aria-valuemax="collectionProgress.total">
-          <span :style="{ width: `${collectionProgressPercent}%` }"></span>
-        </div>
-      </section>
+      <SourceProgress v-if="showCollectionProgress && collectionProgress.total" :progress="collectionProgress" />
+      <p v-if="collectionProgressError" class="progress-error" role="status">{{ collectionProgressError }}</p>
 
       <section class="panel search-panel">
         <form class="search-form" @submit.prevent="search">
@@ -847,27 +835,7 @@ onUnmounted(() => {
         <div class="modal-heading"><div><h2 id="trend-title">{{ trend.domain }} 趋势</h2><p>最近 90 天每日快照</p></div><button class="close-button" @click="trend.open = false">×</button></div>
         <label class="trend-select"><span>指标</span><select v-model="trend.field"><option v-for="field in trendFields" :key="field.value" :value="field.value">{{ field.label }}</option></select></label>
         <div v-if="trend.loading" class="chart-empty"><span class="spinner"></span>正在读取趋势…</div>
-        <div v-else-if="!trendPoints.values.length" class="chart-empty">该指标暂无趋势数据</div>
-        <div v-else class="chart-wrap">
-          <svg viewBox="0 0 780 270" role="img" :aria-label="`${trend.domain} ${trend.field} 趋势图`">
-            <line x1="40" y1="55" x2="740" y2="55" class="grid-line"/><line x1="40" y1="140" x2="740" y2="140" class="grid-line"/><line x1="40" y1="225" x2="740" y2="225" class="grid-line"/>
-            <polyline v-for="(segment, index) in trendPoints.segments" :key="index" :points="segment" class="trend-line"/>
-            <circle v-for="point in trendPoints.values" :key="point.index" :cx="40 + (point.index / Math.max(trend.items.length - 1, 1)) * 700" :cy="225 - ((point.value - trendPoints.min) / (trendPoints.max - trendPoints.min || 1)) * 170" r="4" class="trend-dot" :class="weightSource(trend.items[point.index])"><title>{{ dateText(trend.items[point.index]?.snapshot_date) }} · {{ weightSourceLabel(trend.items[point.index]) }}：{{ numberText(point.value) }}</title></circle>
-            <text x="34" y="59" text-anchor="end">{{ numberText(trendPoints.max) }}</text><text x="34" y="229" text-anchor="end">{{ numberText(trendPoints.min) }}</text>
-            <text x="40" y="254">{{ dateText(trend.items[0]?.snapshot_date) }}</text><text x="740" y="254" text-anchor="end">{{ dateText(trend.items[trend.items.length - 1]?.snapshot_date) }}</text>
-          </svg>
-        </div>
-        <div v-if="!trend.loading && trend.items.length" class="weight-history">
-          <p>权重来源：<span class="weight-source aizhan">爱站</span> <span class="weight-source chinaz">站长之家</span>。仅相邻两天、同来源的有效数据参与变化比较；跨来源不连线。</p>
-          <div class="weight-history-scroll">
-            <table aria-label="每日权重与来源"><thead><tr><th>快照日期</th><th>权重来源</th><th>百度 PC</th><th>百度移动</th><th>状态</th></tr></thead>
-              <tbody><tr v-for="metric in [...trend.items].reverse()" :key="metric.snapshot_date">
-                <td>{{ dateText(metric.snapshot_date) }}</td><td><span class="weight-source" :class="weightSource(metric)">{{ weightSourceLabel(metric) }}</span></td>
-                <td>{{ numberText(metric.baidu_pc_weight) }}</td><td>{{ numberText(metric.baidu_mobile_weight) }}</td><td>{{ weightStatus(metric) }}</td>
-              </tr></tbody>
-            </table>
-          </div>
-        </div>
+        <SourceTrends v-else :items="trend.items" :field="trend.field" :field-label="trendFieldLabel" :from="trend.from" :to="trend.to" />
       </section>
     </div>
 

@@ -201,3 +201,73 @@ main.login-shell { position: relative; width: 100%; min-height: 100vh; margin: 0
 .weight-history th { position: sticky; top: 0; background: #f8fafc; }
 .trend-dot.chinaz { fill: #ea580c; }
 .trend-dot.aizhan { fill: #2563eb; }
+
+/* Each provider keeps the same color in progress, charts and history. */
+.source-progress { margin-bottom: 18px; padding: 20px; }
+.source-section-heading h2, .source-history-heading h3 { margin: 0; font-size: 15px; }
+.source-section-heading p { margin: 7px 0 16px; color: #64748b; font-size: 12px; }
+.source-progress-grid, .source-trend-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.source-progress-card, .source-trend-card { --source-color: #2563eb; padding: 18px; border: 1px solid #dbe5f2; border-top: 3px solid var(--source-color); border-radius: 10px; min-width: 0; }
+.source-progress-card.chinaz, .source-trend-card.chinaz { --source-color: #c65a0a; border-color: #f3dcc9; border-top-color: var(--source-color); }
+.source-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.source-card-heading strong { display: flex; align-items: center; gap: 7px; font-size: 14px; }
+.source-color-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--source-color); flex-shrink: 0; }
+.source-card-heading small { display: block; margin-top: 5px; color: #7b8493; font-size: 11px; }
+.source-state { color: #475569; background: #f1f5f9; border-radius: 5px; padding: 4px 7px; font-size: 11px; white-space: nowrap; }
+.source-state.warning { color: #a13b36; background: #fff1ee; }
+.source-progress-number { display: flex; align-items: baseline; justify-content: space-between; margin: 20px 0 10px; color: #64748b; font-size: 14px; }
+.source-progress-number b { font-size: 25px; color: #172033; }
+.source-progress-number strong { font-size: 20px; color: var(--source-color); }
+.source-progress-number small { font-size: 11px; }
+.source-progress .progress-track > span { background: var(--source-color); }
+.source-progress-counts { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin: 16px 0 0; }
+.source-progress-counts dt { color: #687285; font-size: 11px; white-space: nowrap; }
+.source-progress-counts dd { margin: 7px 0 0; color: #172033; font-size: 16px; font-weight: 600; }
+.source-progress-counts .has-failures dd { color: #b42318; }
+.source-supplement { border-top: 1px solid #edf0f4; margin: 16px 0 0; padding-top: 12px; color: #64748b; font-size: 12px; line-height: 1.8; }
+.source-supplement span { margin-left: 14px; color: #8590a1; }
+.progress-error { color: #92400e; font-size: 12px; }
+.trend-modal { width: min(1140px, 100%); }
+.trend-range { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }
+.trend-range button { padding: 6px 10px; border: 1px solid #dbe2ed; border-radius: 6px; background: #fff; color: #64748b; font-size: 12px; }
+.trend-range button.active { color: #1d4ed8; background: #eff6ff; border-color: #93b4f5; }
+.trend-range span { margin-left: auto; font-size: 11px; color: #64748b; }
+.trend-explanation { color: #64748b; font-size: 12px; line-height: 1.8; margin: 0 0 16px; }
+.source-trend-current { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 18px 0 0; }
+.source-trend-current span, .source-trend-current small { display: block; font-size: 11px; color: #64748b; }
+.source-trend-current strong { display: block; margin: 6px 0; font-size: 25px; color: var(--source-color); font-variant-numeric: tabular-nums; }
+.source-trend-current p { max-width: 145px; color: #64748b; font-size: 11px; line-height: 1.7; text-align: right; }
+.source-chart { display: block; width: 100%; height: auto; overflow: visible; }
+.source-chart text { fill: #64748b; font-size: 10px; }
+.source-trend-line { fill: none; stroke: var(--source-color); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.source-trend-dot { fill: white; stroke: var(--source-color); stroke-width: 2; cursor: crosshair; }
+.source-trend-dot:hover, .source-trend-dot:focus { fill: var(--source-color); stroke-width: 3; outline: none; }
+.chart-cursor { stroke: #a8b2c1; stroke-width: 1; stroke-dasharray: 3 4; }
+.source-chart-empty { min-height: 205px; display: grid; place-items: center; padding: 20px; font-size: 12px; color: #64748b; text-align: center; }
+.source-history-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 24px 0 12px; }
+.source-history-heading span { color: #64748b; font-size: 11px; }
+.source-history-scroll { max-height: 320px; overflow: auto; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 12px; }
+.source-history-table { width: 100%; min-width: 950px; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+.source-history-table th, .source-history-table td { padding: 9px 12px; text-align: left; white-space: nowrap; }
+.source-history-table thead th { position: sticky; top: 0; z-index: 2; height: 38px; background: #f8fafc; }
+.source-history-table thead tr:nth-child(2) th { top: 38px; }
+.source-history-table thead th.aizhan { background: #f0f6ff; }
+.source-history-table thead th.chinaz { background: #fff6ed; }
+.source-history-table tbody th { font-weight: 500; }
+.source-history-table td.chinaz { border-left: 1px solid #edf0f4; }
+.source-history-table .retained-value { color: #8590a1; }
+.source-history-status { min-width: 130px; }
+.source-history-status small { display: block; max-width: 180px; margin-top: 5px; overflow: hidden; text-overflow: ellipsis; color: #b45309; font-size: 10px; }
+.source-legacy-note, .source-empty-note { color: #64748b; font-size: 12px; line-height: 1.8; }
+@media (max-width: 850px) {
+  .source-progress-grid, .source-trend-grid { grid-template-columns: 1fr; }
+  .source-progress { padding: 15px; }
+  .source-trend-card { padding: 14px; }
+  .source-history-heading { align-items: flex-start; flex-direction: column; gap: 6px; }
+}
+@media (max-width: 430px) {
+  .trend-range span { width: 100%; margin: 5px 0 0; }
+  .source-progress-counts { grid-template-columns: repeat(3, 1fr); row-gap: 12px; }
+  .source-supplement span { display: block; margin-left: 0; }
+  .source-card-heading { flex-wrap: wrap; }
+}
