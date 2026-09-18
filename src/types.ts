@@ -48,12 +48,14 @@ export interface Metric {
 }
 
 export interface LatestMetric {
+  weight_collections?: Partial<Record<WeightSource, CollectionJob>>
   domain: Domain
   metric?: Metric
   collection?: CollectionJob
 }
 
 export interface CollectionJob {
+  source?: string
   id: string
   domain_id: string
   domain?: string
