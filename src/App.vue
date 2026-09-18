@@ -81,20 +81,14 @@ const weightFields = [
 
 const items = ref<LatestMetric[]>([])
 const loading = ref(false)
-const summaryLoading = ref(false)
 const exporting = ref(false)
 const total = ref(0)
-const collectedTotal = ref<number>()
-const freshTodayTotal = ref<number>()
-const failedTotal = ref<number>()
-const summaryDomainTotal = ref<number>()
 const page = ref(1)
 const limit = ref(20)
 const selectedField = ref('domain')
 const query = ref('')
 const appliedField = ref('domain')
 const appliedQuery = ref('')
-const failedOnly = ref(false)
 const sortField = ref<SortField | ''>('')
 const sortOrder = ref<SortOrder>('asc')
 const notice = reactive({ text: '', error: false })
@@ -130,14 +124,10 @@ const trend = reactive({
 })
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / limit.value)))
-const refreshing = computed(() => loading.value || summaryLoading.value)
 const exportBusy = computed(() => loading.value || exporting.value)
 const isReadonly = computed(() => auth.user?.role === 'readonly')
 const collectionBusy = computed(() => busyId.value === 'all' || collectionProgress.in_progress)
 const collectionProgressPercent = computed(() => progressPercent(collectionProgress))
-const trafficTotal = computed(() =>
-  items.value.reduce((sum, item) => sum + (item.metric?.traffic_max || 0), 0),
-)
 
 const trendFieldLabel = computed(() => trendFields.find(field => field.value === trend.field)?.label || '指标')
 
@@ -157,7 +147,7 @@ async function load() {
       appliedQuery.value,
       page.value,
       limit.value,
-      failedOnly.value ? 'failed' : '',
+      '',
       sortField.value,
       sortField.value ? sortOrder.value : '',
     )
@@ -174,46 +164,13 @@ async function load() {
   }
 }
 
-async function loadSummary() {
-  if (summaryLoading.value) return
-  summaryLoading.value = true
-  try {
-    const summaryLimit = 100
-    const first = await searchLatest('domain', '', 1, summaryLimit)
-    const pageCount = Math.ceil(first.total / summaryLimit)
-    const remaining = await Promise.all(
-      Array.from({ length: Math.max(0, pageCount - 1) }, (_, index) =>
-        searchLatest('domain', '', index + 2, summaryLimit),
-      ),
-    )
-    const allItems = [first, ...remaining].flatMap((result) => result.items || [])
-    const today = localDate(new Date())
-    summaryDomainTotal.value = first.total
-    collectedTotal.value = allItems.filter((item) => item.metric).length
-    freshTodayTotal.value = allItems.filter(
-      (item) => item.metric?.snapshot_date.slice(0, 10) === today,
-    ).length
-    failedTotal.value = allItems.filter((item) => item.collection?.status === 'failed').length
-  } catch (error) {
-    showNotice(messageOf(error), true)
-  } finally {
-    summaryLoading.value = false
-  }
-}
-
 async function refresh() {
-  await Promise.all([load(), loadSummary()])
+  await load()
 }
 
 function search() {
   appliedField.value = selectedField.value
   appliedQuery.value = query.value.trim()
-  page.value = 1
-  void load()
-}
-
-function toggleFailed() {
-  failedOnly.value = !failedOnly.value
   page.value = 1
   void load()
 }
@@ -244,11 +201,10 @@ async function resetSearch() {
   query.value = ''
   appliedField.value = 'domain'
   appliedQuery.value = ''
-  failedOnly.value = false
   sortField.value = ''
   sortOrder.value = 'asc'
   page.value = 1
-  await Promise.all([load(), loadSummary()])
+  await load()
 }
 
 function changePage(next: number) {
@@ -263,7 +219,7 @@ async function exportWeights() {
   try {
     const exportField = appliedField.value
     const exportQuery = appliedQuery.value
-    const exportStatus = failedOnly.value ? 'failed' : ''
+    const exportStatus = ''
     const exportSortField = sortField.value
     const exportSortOrder = exportSortField ? sortOrder.value : ''
     const exportItems: LatestMetric[] = []
@@ -442,7 +398,7 @@ async function pollCollectionProgress() {
     showCollectionProgress.value = result.total > 0
     if (!result.in_progress && wasInProgress) {
       showNotice(`${result.sources ? '两站' : ''}权重任务已结束：成功 ${result.succeeded}，失败 ${result.failed}`)
-      await Promise.all([load(), loadSummary()])
+      await load()
     }
     if (requestId === collectionPollRequest && auth.user && currentView.value === 'dashboard') {
       collectionPollTimer = window.setTimeout(pollCollectionProgress, result.in_progress ? 1500 : 15000)
@@ -461,7 +417,7 @@ async function remove(item: LatestMetric) {
   try {
     await archiveDomain(item.domain.id)
     showNotice(`${item.domain.domain} 已归档`)
-    await Promise.all([load(), loadSummary()])
+    await load()
   } catch (error) {
     showNotice(messageOf(error), true)
   } finally {
@@ -654,7 +610,7 @@ onUnmounted(() => {
         <span class="session-user">{{ auth.user.username }} · {{ isReadonly ? '只读' : '管理员' }}</span>
         <button class="button secondary" @click="navigate('/titles')">标题监控</button>
         <button class="button secondary" @click="navigate('/certificates')">证书信息</button>
-        <button class="button secondary" :disabled="refreshing" @click="refresh">刷新数据</button>
+        <button class="button secondary" :disabled="loading" @click="refresh">刷新数据</button>
         <button v-if="!isReadonly" class="button secondary" :disabled="collectionBusy" @click="queueAll">
           {{ collectionProgress.in_progress ? `采集中 ${collectionProgressPercent}%` : busyId === 'all' ? '正在排队…' : '采集全部' }}
         </button>
@@ -673,24 +629,6 @@ onUnmounted(() => {
     </header>
 
     <main v-if="currentView === 'dashboard'">
-      <section class="summary-grid dashboard-summary" aria-label="数据概览">
-        <article class="summary-card">
-          <span>域名总数</span><strong>{{ numberText(total) }}</strong><small>当前搜索结果</small>
-        </article>
-        <article class="summary-card">
-          <span>采集成功总数</span><strong>{{ numberText(collectedTotal) }}</strong><small>共 {{ numberText(summaryDomainTotal) }} 个域名</small>
-        </article>
-        <article class="summary-card">
-          <span>今日采集成功</span><strong>{{ numberText(freshTodayTotal) }}</strong><small>全部域名数据</small>
-        </article>
-        <button class="summary-card summary-filter-card collection-failure-card" :class="{ active: failedOnly }" type="button" :aria-pressed="failedOnly" @click="toggleFailed">
-          <span>采集失败总数</span><strong>{{ numberText(failedTotal) }}</strong><small>{{ failedOnly ? '再次点击取消筛选' : '点击查看失败域名' }}</small>
-        </button>
-        <article class="summary-card accent-card">
-          <span>当前页流量上限合计</span><strong>{{ numberText(trafficTotal) }}</strong><small>全网流量估算</small>
-        </article>
-      </section>
-
       <SourceProgress v-if="showCollectionProgress && collectionProgress.total" :progress="collectionProgress" />
       <p v-if="collectionProgressError" class="progress-error" role="status">{{ collectionProgressError }}</p>
 
@@ -709,10 +647,8 @@ onUnmounted(() => {
           <button class="button primary search-button" type="submit">搜索</button>
           <button class="button ghost search-button" type="button" @click="resetSearch">重置</button>
         </form>
-        <p v-if="appliedQuery || failedOnly" class="filter-tip">
-          <template v-if="failedOnly">当前显示：采集失败，共 {{ total }} 个域名。</template>
+        <p v-if="appliedQuery" class="filter-tip">
           <template v-if="appliedQuery">正在按“{{ fields.find((item) => item.value === appliedField)?.label }}”查询：{{ appliedQuery }}</template>
-          <button v-if="failedOnly" type="button" @click="toggleFailed">清除失败筛选</button>
         </p>
       </section>
 
@@ -721,7 +657,7 @@ onUnmounted(() => {
           <div><h2>最新域名数据</h2><p>每个域名展示最近一次采集快照</p></div>
           <div class="table-heading-actions">
             <button class="button ghost export-button" type="button" :disabled="exportBusy || total === 0" @click="exportWeights">
-              {{ exporting ? '正在导出…' : appliedQuery || failedOnly ? '导出当前筛选权重' : '导出全部权重' }}
+              {{ exporting ? '正在导出…' : appliedQuery ? '导出当前筛选权重' : '导出全部权重' }}
             </button>
             <label class="page-size">每页
               <select v-model.number="limit" @change="page = 1; load()">
