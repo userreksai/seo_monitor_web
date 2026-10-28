@@ -81,7 +81,7 @@ fi
 if [ ! -f "$APP_DIR/.env" ]; then
   {
     printf 'HOST=127.0.0.1\n'
-    printf 'PORT=8901\n'
+    printf 'PORT=9999\n'
     printf 'BACKEND_API_URL=http://127.0.0.1:10001\n'
   } > "$APP_DIR/.env"
 else
@@ -116,7 +116,7 @@ log "Waiting for frontend health check"
 HEALTHY=0
 attempt=1
 while [ "$attempt" -le 15 ]; do
-  if curl -fsS --max-time 2 http://127.0.0.1:8901/frontend-health >/dev/null 2>&1; then
+  if curl -fsS --max-time 2 http://127.0.0.1:9999/frontend-health >/dev/null 2>&1; then
     HEALTHY=1
     break
   fi
@@ -130,7 +130,7 @@ if [ "$HEALTHY" -ne 1 ]; then
 fi
 
 printf '\nInstallation complete.\n'
-printf 'Loopback upstream: http://127.0.0.1:8901\n'
+printf 'Loopback upstream: http://127.0.0.1:9999\n'
 printf 'Public access: configure Nginx TLS using deploy/nginx-seo-monitor.conf.example.\n'
 printf 'Login: managed by the backend database.\n'
 printf 'Service: systemctl status %s\n' "$SERVICE"
